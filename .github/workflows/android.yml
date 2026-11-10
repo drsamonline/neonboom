@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   apk:
+    # Best effort: needs the Android SDK + Gradle on the runner.
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

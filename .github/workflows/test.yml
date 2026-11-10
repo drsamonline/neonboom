@@ -14,18 +14,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install Chromium + harness
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser || sudo snap install chromium
-          npm install
-      - name: Build standalone
+
+      - name: Install a known Chrome
+        uses: browser-actions/setup-chrome@v1
+        id: chrome
+
+      - name: Install the harness
+        run: npm install
+
+      - name: Build the single-file bundle
         run: node scripts/build-standalone.mjs
-      - name: Run headless suite
+
+      - name: Run the headless suite
         env:
-          CHROME_PATH: /usr/bin/chromium-browser
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: node tests/run.mjs
-      - name: Size budget
+
+      - name: Size budget (230 KB)
         run: |
           SIZE=$(stat -c%s dist/neonboom.html)
           echo "dist/neonboom.html = $SIZE bytes"

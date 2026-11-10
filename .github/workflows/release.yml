@@ -9,7 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  standalone:
+  web:
+    name: Standalone HTML
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,8 +19,7 @@ jobs:
           node-version: 20
       - run: node scripts/build-standalone.mjs
       - name: Zip the source bundle
-        run: |
-          zip -r neonboom-source.zip index.html manifest.webmanifest sw.js src assets docs scripts LICENSE README.md
+        run: zip -r neonboom-source.zip index.html manifest.webmanifest sw.js src assets docs scripts tests LICENSE README.md CREDITS.md
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -28,7 +28,12 @@ jobs:
           generate_release_notes: true
 
   desktop:
-    needs: standalone
+    name: Desktop (${{ matrix.os }})
+    needs: web
+    # Best effort: a signed installer needs each platform's own toolchain and
+    # secrets. The web app is the product; these artifacts are a convenience and
+    # must never block the release itself.
+    continue-on-error: true
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
@@ -39,16 +44,17 @@ jobs:
         with:
           node-version: 20
       - run: node scripts/build-standalone.mjs
-      - name: Stage app into the shell
+      - name: Stage the app into the shell
+        shell: bash
         run: |
-          mkdir -p electron/app electron/build
+          mkdir -p electron/app
           cp dist/neonboom.html electron/app/
-      - name: Install and package
+      - name: Package
         working-directory: electron
         run: |
           npm install
           npx electron-builder --publish never
       - uses: softprops/action-gh-release@v2
         with:
-          files: electron/dist/**/*.{exe,dmg,AppImage,deb,zip}
+          files: electron/dist/**/*
           fail_on_unmatched_files: false

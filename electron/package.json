@@ -24,8 +24,8 @@
     "directories": { "output": "dist", "buildResources": "build" },
     "files": ["main.cjs", "preload.cjs", "app/**/*"],
     "extraMetadata": { "main": "main.cjs" },
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.ico" },
-    "mac": { "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }], "category": "public.app-category.music", "icon": "build/icon.icns" },
-    "linux": { "target": ["AppImage", "deb"], "category": "Audio", "icon": "build/icons" }
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "mac": { "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }], "category": "public.app-category.music" },
+    "linux": { "target": ["AppImage", "deb"], "category": "Audio" }
   }
 }

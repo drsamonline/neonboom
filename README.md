@@ -53,7 +53,21 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 | **▶ Live app** | https://drsamonline.github.io/neonboom/ |
 | **Landing page** | https://drsamonline.github.io/neonboom/docs/ |
 | **One file, no server** | [`dist/neonboom.html`](dist/neonboom.html) — double-click it |
-| **Releases** | [Windows · macOS · Linux · Android · standalone HTML](https://github.com/drsamonline/neonboom/releases) |
+| **Releases** | [Windows · macOS · Linux · Android · standalone HTML](https://github.com/drsamonline/neonboom/releases/latest) |
+
+### Downloads
+
+| File | What it is |
+|---|---|
+| `neonboom.html` | The whole app in one ~192 KB file. Double-click it; runs offline from `file://`, zero network requests. |
+| `NEONBOOM.Setup.*.exe` | Windows installer (x64, NSIS) |
+| `NEONBOOM-*.dmg` | macOS (Intel and Apple Silicon) |
+| `NEONBOOM-*.AppImage` · `*.deb` | Linux portable and Debian/Ubuntu packages |
+| `app-debug.apk` | Android **debug** build — unsigned; allow "unknown sources" to install |
+| `neonboom-source.zip` | Modular source, tests, docs and wrappers |
+
+Desktop and Android binaries are built by GitHub Actions from the tag and are unsigned, so the OS
+warns on first launch. The web app is the product; everything else is a convenience wrapper.
 
 ```bash
 git clone https://github.com/drsamonline/neonboom.git

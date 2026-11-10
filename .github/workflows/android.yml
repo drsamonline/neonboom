@@ -33,6 +33,22 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: Pin the Kotlin stdlib
+        # Capacitor's generated project pulls kotlin-stdlib 1.8.x and a
+        # transitive kotlin-stdlib-jdk8 1.6.x, which declare the same classes
+        # and fail AGP's duplicate-class check. Forcing one version fixes it.
+        run: |
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          configurations.all {
+              resolutionStrategy {
+                  force "org.jetbrains.kotlin:kotlin-stdlib:1.9.24"
+                  force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24"
+                  force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24"
+              }
+          }
+          GRADLE
+
       - name: Assemble debug APK
         working-directory: android
         env:

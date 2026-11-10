@@ -16,6 +16,8 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
 [![Tests](https://img.shields.io/badge/headless_tests-66_assertions_passing-41d18a)](#testing)
+[![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
+[![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
 [![Sponsor](https://img.shields.io/badge/sponsor-♥-ff5d8f)](https://github.com/sponsors/drsamonline)
 

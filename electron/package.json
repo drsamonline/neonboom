@@ -1,0 +1,31 @@
+{
+  "name": "neonboom-desktop",
+  "productName": "NEONBOOM",
+  "version": "1.1.0",
+  "description": "NEONBOOM — offline beat workstation for the desktop",
+  "author": { "name": "Dr Sohil Momin", "email": "sohilmomin2000@gmail.com" },
+  "license": "SEE LICENSE IN ../LICENSE",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.drsamonline.neonboom",
+    "productName": "NEONBOOM",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.cjs", "preload.cjs", "app/**/*"],
+    "extraMetadata": { "main": "main.cjs" },
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "build/icon.ico" },
+    "mac": { "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }], "category": "public.app-category.music", "icon": "build/icon.icns" },
+    "linux": { "target": ["AppImage", "deb"], "category": "Audio", "icon": "build/icons" }
+  }
+}

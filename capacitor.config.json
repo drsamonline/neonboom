@@ -1,0 +1,13 @@
+{
+  "appId": "com.drsamonline.neonboom",
+  "appName": "NEONBOOM",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#08090b"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/build-standalone.mjs
+      - name: Zip the source bundle
+        run: |
+          zip -r neonboom-source.zip index.html manifest.webmanifest sw.js src assets docs scripts LICENSE README.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/neonboom.html
+            neonboom-source.zip
+          generate_release_notes: true
+
+  desktop:
+    needs: standalone
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/build-standalone.mjs
+      - name: Stage app into the shell
+        run: |
+          mkdir -p electron/app electron/build
+          cp dist/neonboom.html electron/app/
+      - name: Install and package
+        working-directory: electron
+        run: |
+          npm install
+          npx electron-builder --publish never
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: electron/dist/**/*.{exe,dmg,AppImage,deb,zip}
+          fail_on_unmatched_files: false

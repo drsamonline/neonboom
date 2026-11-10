@@ -1,0 +1,51 @@
+/* =========================================================================
+   NEONBOOM — design tokens
+   Hardware-sampler chassis. Dark metal, amber LCD, per-track neon tags.
+   ========================================================================= */
+:root{
+  /* surfaces */
+  --bg-0:#08090b;
+  --bg-1:#0f1216;
+  --bg-2:#151a20;
+  --bg-3:#1b212a;
+  --bg-4:#232b36;
+  --line:#242c36;
+  --line-2:#333d4a;
+  --line-3:#4a5666;
+
+  /* ink */
+  --ink-0:#eef2f6;
+  --ink-1:#a3aebc;
+  --ink-2:#6d7887;
+  --ink-3:#4a5462;
+
+  /* signal */
+  --amber:#ffb020;
+  --amber-soft:#ffd479;
+  --amber-dim:#8a6420;
+  --ok:#41d18a;
+  --warn:#ffc24b;
+  --danger:#ff5d5d;
+  --focus:#ffb020;
+
+  /* geometry */
+  --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:14px; --r-xl:20px;
+  --tap:44px;               /* minimum touch target */
+  --topbar-h:60px;
+  --pad:260px;              /* pad rail width  */
+  --inspect:288px;          /* inspector width */
+  --heads:168px;            /* track header column */
+  --track-h:66px;
+
+  --mono:ui-monospace,'JetBrains Mono','SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+
+  --shadow-1:0 1px 0 rgba(255,255,255,.04) inset, 0 1px 2px rgba(0,0,0,.5);
+  --shadow-2:0 8px 24px rgba(0,0,0,.45);
+  --glow-amber:0 0 0 1px rgba(255,176,32,.55), 0 0 18px rgba(255,176,32,.18);
+}
+
+/* touch vs pointer tuning: bigger controls where fingers are used */
+@media (hover:none){
+  :root{ --track-h:74px; }
+}

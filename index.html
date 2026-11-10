@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
+<meta name="theme-color" content="#0b0d10">
+<title>NEONBOOM — browser beat workstation</title>
+<meta name="description" content="NEONBOOM is a free, offline-first beat workstation that runs in your browser: 24 procedurally synthesised loops, a hardware-style pad grid, a canvas arrangement timeline, per-track mixer, master FX rack and WAV export. No install, no account, no upload.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/img/icon-192.png">
+<meta property="og:title" content="NEONBOOM — browser beat workstation">
+<meta property="og:description" content="Make beats in your browser. Offline-first, zero-install, zero-upload. Pads, timeline, mixer, FX, WAV export.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/img/social.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body data-view="pads">
+
+<!-- ================= BOOT ================= -->
+<div id="boot">
+  <div class="logo">NEONBOOM</div>
+  <div class="bar"><i id="bootBar"></i></div>
+  <div class="msg" id="bootMsg">starting audio engine…</div>
+  <div class="skip">everything is synthesised locally — nothing is downloaded</div>
+</div>
+
+<div id="app">
+
+  <!-- ================= TOPBAR ================= -->
+  <header id="topbar">
+    <div class="brand"><b>NEON<span>BOOM</span></b><em>beat workstation</em></div>
+
+    <div class="transport" role="group" aria-label="Transport">
+      <button class="key" id="btnRewind" title="Rewind (R)" aria-label="Rewind">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 5v14L8 12z" fill="currentColor" stroke="none"/><rect x="4" y="5" width="2.6" height="14" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button class="key play" id="btnPlay" title="Play / Pause (Space)" aria-label="Play">
+        <svg id="icoPlay" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+      </button>
+      <button class="key" id="btnStop" title="Stop" aria-label="Stop">
+        <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/></svg>
+      </button>
+      <button class="key" id="btnLoop" title="Loop region (L)" aria-label="Loop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9a4 4 0 014-4h9l-2.5-2.5M20 15a4 4 0 01-4 4H7l2.5 2.5"/></svg>
+      </button>
+      <button class="key" id="btnMetro" title="Metronome (K)" aria-label="Metronome">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4l6 15H6L12 4z"/><path d="M12 9l3.4 8.5"/><path d="M4 20h16"/></svg>
+      </button>
+    </div>
+
+    <button class="lcd" id="lcd" aria-live="off" title="Tempo &amp; transport settings"><b id="lcdPos">001:1:1</b><span id="lcdSub">BAR · BEAT · 16TH</span></button>
+
+    <div class="tempo" title="Tempo">
+      <button class="step" data-tempo="-1" aria-label="Slower">−</button>
+      <input id="bpm" type="number" min="40" max="220" step="1" value="90" aria-label="BPM">
+      <button class="step" data-tempo="1" aria-label="Faster">+</button>
+      <span class="unit">BPM</span>
+    </div>
+
+    <div class="masterVu" id="masterVu" aria-hidden="true"></div>
+
+    <div class="topActions">
+      <button class="btn icon" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h9a6 6 0 010 12h-3"/></svg>
+      </button>
+      <button class="btn icon" id="btnRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9h-9a6 6 0 000 12h3"/></svg>
+      </button>
+      <span class="pill desktopOnly" id="saveState">saved</span>
+      <button class="btn" id="btnExport" title="Render arrangement to WAV">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+        <span class="desktopOnly">WAV</span>
+      </button>
+      <button class="btn icon" id="btnHelp" title="Shortcuts &amp; about" aria-label="Help">?</button>
+    </div>
+  </header>
+
+  <!-- ================= STAGE ================= -->
+  <main id="stage">
+
+    <!-- ---------- pads ---------- -->
+    <aside id="padPanel" aria-label="Sample pads">
+      <div class="panelHead">
+        <span>Pads</span><span class="count" id="padCount"></span>
+        <span class="spacer"></span>
+        <button class="chip" id="btnRecArm" title="Arm: pad taps drop clips at the playhead">REC</button>
+      </div>
+      <div class="chips" id="padChips"></div>
+      <div class="padGrid" id="padGrid"></div>
+      <div class="padBar">
+        <button class="btn wide" id="btnImport">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+          Import audio
+        </button>
+      </div>
+      <input id="fileInput" type="file" accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a" multiple hidden>
+    </aside>
+
+    <!-- ---------- arrangement ---------- -->
+    <section id="arrange" aria-label="Arrangement">
+      <div class="arrangeBar">
+        <div class="zoomGrp">
+          <button data-zoom="out" title="Zoom out (-)">−</button>
+          <span id="zoomLbl">100%</span>
+          <button data-zoom="in" title="Zoom in (+)">+</button>
+          <button data-zoom="fit" title="Fit project" style="font-size:10px;font-weight:800;">FIT</button>
+        </div>
+        <div class="segmented" id="modeGrp">
+          <button data-mode="scroll" title="Drag to scroll, tap to select">Scroll</button>
+          <button data-mode="edit" class="on" title="Drag clips to move / trim">Edit</button>
+        </div>
+        <div class="spacer"></div>
+        <span class="hint" id="hint">Drag clips · drag edges to trim · shift-drag ruler for loop</span>
+        <button class="btn" id="btnAddTrack" title="Add track">+ Track</button>
+      </div>
+
+      <div class="arrangeHead">
+        <div class="headSpacer"><span>TRACKS</span></div>
+        <canvas id="ruler" height="30"></canvas>
+      </div>
+
+      <div class="arrangeBody">
+        <div id="trackHeads"><div id="trackHeadsInner"></div></div>
+        <div id="tlViewport">
+          <div id="tlSpacer"></div>
+          <canvas id="tlCanvas"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- inspector ---------- -->
+    <aside id="inspector" aria-label="Inspector"></aside>
+  </main>
+
+  <!-- ================= DRAWER ================= -->
+  <div id="drawer" data-open="false">
+    <div class="drawerTabs" id="drawerTabs">
+      <button data-drawer="mixer">Mixer</button>
+      <button data-drawer="fx">FX rack</button>
+      <button data-drawer="export">Export</button>
+      <button data-drawer="help">Help</button>
+    </div>
+    <div class="drawerBody" id="drawerBody"></div>
+  </div>
+
+  <!-- ================= MOBILE TABS ================= -->
+  <nav id="tabbar" aria-label="Views">
+    <button data-view="pads" class="on">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      Pads
+    </button>
+    <button data-view="arrange">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h12M3 17h8"/></svg>
+      Arrange
+    </button>
+    <button data-view="mixer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 21V10M6 6V3M12 21v-7M12 10V3M18 21v-4M18 13V3"/><circle cx="6" cy="8" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="15" r="2"/></svg>
+      Mix
+    </button>
+    <button data-view="fx">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2 2M16.4 16.4l2 2M18.4 5.6l-2 2M7.6 16.4l-2 2"/></svg>
+      FX
+    </button>
+    <button data-view="more">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
+      More
+    </button>
+  </nav>
+</div>
+
+<div id="scrim"></div>
+<div id="sheet" role="dialog" aria-modal="true"></div>
+<div id="toasts" aria-live="polite"></div>
+
+<!-- ================= SCRIPTS (order matters: core → audio → ui → boot) ================= -->
+<script src="src/core/util.js"></script>
+<script src="src/audio/synth.js"></script>
+<script src="src/audio/engine.js"></script>
+<script src="src/audio/wav.js"></script>
+<script src="src/core/project.js"></script>
+<script src="src/core/transport.js"></script>
+<script src="src/ui/timeline.js"></script>
+<script src="src/ui/pads.js"></script>
+<script src="src/ui/mixer.js"></script>
+<script src="src/ui/fx.js"></script>
+<script src="src/ui/inspector.js"></script>
+<script src="src/ui/shell.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>

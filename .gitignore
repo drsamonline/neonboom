@@ -6,5 +6,6 @@ Thumbs.db
 electron/dist/
 electron/node_modules/
 android/
+build-web/
 ios/
 .capacitor/

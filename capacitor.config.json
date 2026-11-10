@@ -1,7 +1,7 @@
 {
   "appId": "com.drsamonline.neonboom",
   "appName": "NEONBOOM",
-  "webDir": ".",
+  "webDir": "build-web",
   "bundledWebRuntime": false,
   "android": {
     "allowMixedContent": false,

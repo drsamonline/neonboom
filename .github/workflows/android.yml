@@ -10,8 +10,6 @@ permissions:
 
 jobs:
   apk:
-    # Best effort: needs the Android SDK + Gradle on the runner.
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,27 +20,36 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
 
       - name: Build the web payload
-        run: node scripts/build-standalone.mjs
+        run: |
+          node scripts/build-standalone.mjs
+          mkdir -p build-web
+          cp dist/neonboom.html build-web/index.html
 
       - name: Add Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap add android || true
+          npx cap add android
           npx cap sync android
 
       - name: Assemble debug APK
         working-directory: android
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
           name: neonboom-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
 
       - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: android/app/build/outputs/apk/debug/*.apk
           fail_on_unmatched_files: false

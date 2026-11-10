@@ -54,7 +54,16 @@ jobs:
         run: |
           npm install
           npx electron-builder --publish never
+      - name: Collect installers only
+        shell: bash
+        run: |
+          mkdir -p out
+          shopt -s nullglob
+          for f in electron/dist/*.exe electron/dist/*.dmg electron/dist/*.AppImage electron/dist/*.deb electron/dist/*.snap; do
+            cp "$f" out/
+          done
+          ls -la out
       - uses: softprops/action-gh-release@v2
         with:
-          files: electron/dist/**/*
+          files: out/*
           fail_on_unmatched_files: false

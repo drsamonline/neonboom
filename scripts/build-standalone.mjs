@@ -31,7 +31,7 @@ html = html.replace(/<link rel="icon" href="[^"]+" type="image\/svg\+xml">/,
   `<link rel="icon" href="data:image/svg+xml;base64,${Buffer.from(icon).toString('base64')}">`);
 html = html.replace(/<link rel="apple-touch-icon" href="[^"]+">/, '');
 
-/* --- drop PWA-only references (no server, no manifest fetch) ------------ */
+/* --- PWA references are attached at runtime over http(s) only ----------- */
 html = html.replace(/<link rel="manifest" href="[^"]+">/, '');
 html = html.replace(/<meta property="og:image" content="[^"]+">/, '');
 

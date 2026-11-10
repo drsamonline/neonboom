@@ -7,7 +7,6 @@
 <meta name="theme-color" content="#0b0d10">
 <title>NEONBOOM — browser beat workstation</title>
 <meta name="description" content="NEONBOOM is a free, offline-first beat workstation that runs in your browser: 24 procedurally synthesised loops, a hardware-style pad grid, a canvas arrangement timeline, per-track mixer, master FX rack and WAV export. No install, no account, no upload.">
-
 <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiI+CiAgPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMTIiIGZpbGw9IiMwZDEwMTQiLz4KICA8cmVjdCB4PSIxMCIgeT0iMTAiIHdpZHRoPSI0OTIiIGhlaWdodD0iNDkyIiByeD0iMTA0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmIwMjAiIHN0cm9rZS1vcGFjaXR5PSIuMzUiIHN0cm9rZS13aWR0aD0iNiIvPgogIDxnIGZpbGw9IiNmZmIwMjAiPgogICAgPHJlY3QgeD0iODgiIHk9IjE5NiIgd2lkdGg9IjE4IiBoZWlnaHQ9IjEyMCIgcng9IjkiLz4KICAgIDxyZWN0IHg9IjEyNCIgeT0iMTY0IiB3aWR0aD0iMTgiIGhlaWdodD0iMTg0IiByeD0iOSIvPgogICAgPHJlY3QgeD0iMTYwIiB5PSIxMzIiIHdpZHRoPSIxOCIgaGVpZ2h0PSIyNDgiIHJ4PSI5Ii8+CiAgICA8cmVjdCB4PSIxOTYiIHk9Ijk2IiB3aWR0aD0iMTgiIGhlaWdodD0iMzIwIiByeD0iOSIgZmlsbD0iI2ZmZDQ3OSIvPgogICAgPHJlY3QgeD0iMjMyIiB5PSIxNTAiIHdpZHRoPSIxOCIgaGVpZ2h0PSIyMTIiIHJ4PSI5Ii8+CiAgICA8cmVjdCB4PSIyNjgiIHk9IjE4NCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE0NCIgcng9IjkiLz4KICAgIDxyZWN0IHg9IjMwNCIgeT0iMjEyIiB3aWR0aD0iMTgiIGhlaWdodD0iODgiIHJ4PSI5Ii8+CiAgICA8cmVjdCB4PSIzNDAiIHk9IjE2OCIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE3NiIgcng9IjkiLz4KICAgIDxyZWN0IHg9IjM3NiIgeT0iMjAwIiB3aWR0aD0iMTgiIGhlaWdodD0iMTEyIiByeD0iOSIgZmlsbD0iI2ZmZDQ3OSIvPgogIDwvZz4KPC9zdmc+Cg==">
 
 <meta property="og:title" content="NEONBOOM — browser beat workstation">
@@ -2715,7 +2714,7 @@ select{cursor:pointer;}
             haptic(14);
             NB.Shell.openClipSheet(this.selectedClipId);
           }
-        }, 520);
+        }, 470);
 
         c.addEventListener('pointermove', onMove);
         c.addEventListener('pointerup', onUp, { once: true });
@@ -4265,8 +4264,17 @@ select{cursor:pointer;}
         const b = $('#btnInstall');
         if (b) { b.hidden = false; b.addEventListener('click', () => { e.prompt(); b.hidden = true; }); }
       });
-      if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+      /* The manifest is only attached over http(s): fetching it from file://
+         is a guaranteed CORS console error for anyone who double-clicks the
+         downloaded file, and it buys nothing there. */
+      if (location.protocol.startsWith('http')) {
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = 'manifest.webmanifest';
+        document.head.appendChild(link);
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
       }
     },
   };

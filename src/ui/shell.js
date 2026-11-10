@@ -614,8 +614,17 @@
         const b = $('#btnInstall');
         if (b) { b.hidden = false; b.addEventListener('click', () => { e.prompt(); b.hidden = true; }); }
       });
-      if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+      /* The manifest is only attached over http(s): fetching it from file://
+         is a guaranteed CORS console error for anyone who double-clicks the
+         downloaded file, and it buys nothing there. */
+      if (location.protocol.startsWith('http')) {
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = 'manifest.webmanifest';
+        document.head.appendChild(link);
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
       }
     },
   };

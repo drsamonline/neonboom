@@ -11,13 +11,27 @@
     "url": "https://github.com/drsamonline"
   },
   "homepage": "https://drsamonline.github.io/neonboom/",
-  "repository": { "type": "git", "url": "https://github.com/drsamonline/neonboom.git" },
-  "keywords": ["web-audio", "daw", "beat-maker", "sampler", "music", "offline", "pwa", "vanilla-js", "canvas"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drsamonline/neonboom.git"
+  },
+  "keywords": [
+    "web-audio",
+    "daw",
+    "beat-maker",
+    "sampler",
+    "music",
+    "offline",
+    "pwa",
+    "vanilla-js",
+    "canvas"
+  ],
   "scripts": {
     "build": "node scripts/build-standalone.mjs",
     "test": "node tests/run.mjs",
     "screenshots": "node tests/screenshots.mjs",
-    "serve": "npx --yes serve ."
+    "serve": "npx --yes serve .",
+    "test:offline": "node tests/offline.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^23.0.0"

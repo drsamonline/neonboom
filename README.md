@@ -148,11 +148,12 @@ node scripts/build-standalone.mjs
 The repo is checked with a headless Chromium harness that boots the app and exercises the public surface — transport, clip edits, undo/redo, zoom extremes, pads, recording, mixer, FX, offline render, autosave restore, touch gestures and layout at three viewport sizes.
 
 ```bash
-node tests/run.mjs            # functional + interaction + touch + responsive
-node tests/screenshots.mjs    # regenerates docs/img/*
+npm test                       # 66 assertions: functional, interaction, touch, responsive, standalone
+npm run test:offline           # serves over http, kills the network, reloads — proves the offline claim
+npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **66 assertions, 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.5 s for 27 offline renders.
+Latest run: **66 assertions + 6 offline assertions, 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.5 s for 27 offline renders.
 
 ---
 

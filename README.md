@@ -11,7 +11,7 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.1-ffb020)](CHANGELOG.md)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)

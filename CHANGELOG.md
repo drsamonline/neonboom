@@ -5,6 +5,21 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.1] — 2026-11-11
+
+### Fixed
+- The PWA manifest is now attached only over `http(s)`. Loading `index.html` from `file://` no
+  longer logs a CORS error for the manifest — which matters for the standalone download, where
+  a service worker is impossible anyway.
+- Electron packaging metadata (`homepage`) and release uploads: only installers are attached now,
+  not the unpacked app directory.
+
+### Changed
+- In-app help now carries the full credits, the reading list and a sponsor link, so the licence
+  and attribution travel with the downloaded file.
+
+---
+
 ## [1.1.0] — 2026-11-11
 
 The rewrite. The 1.0 prototype was a single 2 192-line HTML file; this version splits it into

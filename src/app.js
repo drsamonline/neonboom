@@ -40,7 +40,7 @@
   ];
 
   const App = {
-    version: '1.1.0',
+    version: '1.1.1',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

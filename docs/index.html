@@ -148,7 +148,7 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-con
       <a class="btn" href="https://github.com/drsamonline/neonboom">★ Star on GitHub</a>
     </div>
     <div class="badges">
-      <span class="badge"><b>191 KB</b> single file</span>
+      <span class="badge"><b>192 KB</b> single file</span>
       <span class="badge"><b>27</b> synthesised loops</span>
       <span class="badge"><b>0</b> network requests at runtime</span>
       <span class="badge"><b>PolyForm</b> Noncommercial 1.0.0</span>
@@ -296,7 +296,7 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-con
         <h3 style="margin-top:18px">2 · One file, no server</h3>
         <p style="margin-bottom:12px">Download <a href="../dist/neonboom.min.html">neonboom.min.html</a> (177 KB) and double-click it. The whole workstation — CSS, JS, icons — is inside that one file and runs from <code>file://</code>. Prefer to read the code? <a href="../dist/neonboom.html">neonboom.html</a> is the same app, unminified.</p>
         <h3 style="margin-top:18px">3 · Skip the wait (optional pack)</h3>
-        <p style="margin-bottom:12px">A separate 6.9 MB zip holds the same 27 loops, rendered by the app itself. Bundled builds load it automatically; in the browser, open <em>Export</em> → <em>Load sample pack</em>. The core file stays 191 KB either way.</p>
+        <p style="margin-bottom:12px">A separate 6.9 MB zip holds the same 27 loops, rendered by the app itself. Bundled builds load it automatically; in the browser, open <em>Export</em> → <em>Load sample pack</em>. The core file stays 192 KB either way.</p>
         <h3 style="margin-top:18px">4 · Install as an app</h3>
         <p>Open the hosted app, then use your browser's <em>Install</em> / <em>Add to Home Screen</em>. It launches full-screen and works with the network off.</p>
       </div>
@@ -342,14 +342,19 @@ npm install &amp;&amp; npx cap add android &amp;&amp; npx cap sync</code></pre>
 
 <section id="roadmap" class="alt">
   <div class="wrap">
-    <div class="eyebrow">Next</div>
-    <h2>What is coming</h2>
+    <div class="eyebrow">Status</div>
+    <h2>Finished, and staying finished</h2>
     <div class="grid g2" style="margin-top:22px">
       <div>
-        <h3>Planned</h3>
+        <h3>Shipped by 2.4.0</h3>
         <ul class="ticks">
-          <li>Project share links with compressed state in the URL</li>
-          <li>Per-track delay/reverb send amounts</li>
+          <li>27 synthesised loops, pad grid, canvas arrangement</li>
+          <li>Mixer with per-track delay and reverb sends</li>
+          <li>Master FX rack, automation lanes for level and pan</li>
+          <li>Clip editor, stem export, WSOLA tempo-fit</li>
+          <li>Scenes with quantised live switching</li>
+          <li>MIDI notes, velocity and CC learn</li>
+          <li>Offline PWA, 192 KB single file, desktop + Android builds</li>
         </ul>
       </div>
       <div>
@@ -359,7 +364,10 @@ npm install &amp;&amp; npx cap add android &amp;&amp; npx cap sync</code></pre>
           <li>Sample-store browsing — it works offline by design</li>
           <li>A plugin format — the browser is the host</li>
           <li>Video tutorials baked into the UI</li>
+          <li>Code signing — needs certificates held as secrets</li>
+          <li>Translations — only worth it with a domain translator</li>
         </ul>
+        <p style="margin-top:14px;font-size:12.5px">The reasoning for each closed item is in <a href="https://github.com/drsamonline/neonboom/blob/main/ENHANCEMENTS.md#9-closed-by-decision--2026-11-11">ENHANCEMENTS.md §9</a>.</p>
       </div>
     </div>
   </div>

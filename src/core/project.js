@@ -63,6 +63,8 @@
       id: uid('trk'), name: `Track ${i + 1}`,
       color: NB.util.paletteColor(i),
       vol: 0.85, pan: 0, sendA: 0, sendB: 0, mute: false, solo: false, clips: [],
+      automation: { level: [], pan: [] },     // [{six, v}] breakpoints, sorted
+      autoMode: null,                          // 'level' | 'pan' | null (lane shown)
     };
   }
 
@@ -116,6 +118,48 @@
   }
 
   function clipEnd(clip) { return clip.startSix + (clip.trimEndSix - clip.trimStartSix); }
+
+  /* ---- automation ------------------------------------------------------
+     A breakpoint envelope per track. Values are multipliers: `level` scales
+     the track (0 = silent, 1 = as the fader says), `pan` overrides the pan
+     knob. With no points the envelope is flat and the knobs win. */
+  const AUTOMATION_RANGE = { level: [0, 1], pan: [-1, 1] };
+
+  function autoValueAt(track, kind, six) {
+    const pts = (track.automation && track.automation[kind]) || [];
+    if (!pts.length) return null;
+    if (six <= pts[0].six) return pts[0].v;
+    const last = pts[pts.length - 1];
+    if (six >= last.six) return last.v;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (six >= a.six && six <= b.six) {
+        const t = (six - a.six) / Math.max(1e-6, b.six - a.six);
+        return a.v + (b.v - a.v) * t;
+      }
+    }
+    return last.v;
+  }
+
+  function autoPoint(track, kind, six, v) {
+    const [min, max] = AUTOMATION_RANGE[kind];
+    if (!track.automation) track.automation = { level: [], pan: [] };
+    const pts = track.automation[kind] || (track.automation[kind] = []);
+    const value = clamp(v, min, max);
+    const at = Math.max(0, Math.round(six));
+    const existing = pts.findIndex((p) => Math.abs(p.six - at) < 1);
+    if (existing >= 0) pts[existing].v = value;
+    else pts.push({ six: at, v: value });
+    pts.sort((a, b) => a.six - b.six);
+    return pts;
+  }
+
+  function autoRemove(track, kind, six) {
+    const pts = (track.automation && track.automation[kind]) || [];
+    const i = pts.findIndex((p) => Math.abs(p.six - six) < 2);
+    if (i >= 0) pts.splice(i, 1);
+    return i >= 0;
+  }
 
   function addTrack() {
     const t = newTrack(Project.tracks.length);
@@ -451,6 +495,7 @@
       tracks: Project.tracks.map((t) => ({
         name: t.name, color: t.color, vol: t.vol, pan: t.pan,
         sendA: t.sendA || 0, sendB: t.sendB || 0, mute: t.mute, solo: t.solo,
+        automation: t.automation || { level: [], pan: [] },
         clips: t.clips.map((c) => ({
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
           startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
@@ -477,6 +522,7 @@
       track.pan = t.pan || 0;
       track.sendA = t.sendA || 0; track.sendB = t.sendB || 0;
       track.mute = !!t.mute; track.solo = !!t.solo;
+      track.automation = { level: [], pan: [], ...(t.automation || {}) };
       track.clips = (t.clips || []).map((c) => {
         const s = Library.byName(c.sampleName);
         if (!s) return null;
@@ -539,6 +585,7 @@
   NB.History = History;
   NB.Persistence = Persistence;
   NB.project = { initTracks, newTrack, newClip, clipEnd, addTrack, removeTrack, findClip,
+    autoValueAt, autoPoint, autoRemove, AUTOMATION_RANGE,
     removeClip, projectFile, loadProjectFile, buildDemo, computePeaks,
     normaliseClip, reversedBuffer, SYNTH_VERSION };
   NB.LoopCache = LoopCache;

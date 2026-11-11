@@ -134,6 +134,13 @@
       this._passStartCtx = this.startCtxTime;
       this._passStartSix = pos;
       this._metroLast = -1;
+      this.project.tracks.forEach((t, i) => {
+        const bus = this.engine.tracks[i];
+        if (!bus || !bus.auto) return;
+        bus.auto.gain.cancelScheduledValues(this.startCtxTime);
+        bus.auto._autoActive = false;
+        if (bus.panner) { bus.panner.pan.cancelScheduledValues(this.startCtxTime); bus.panner._autoActive = false; }
+      });
       this._schedulerTick();
     },
 
@@ -191,6 +198,8 @@
       const horizon = E.ctx.currentTime + LOOKAHEAD;
       this._fill(horizon);
 
+      this._applyAutomation(E.ctx.currentTime, horizon);
+
       const list = E._activeSources;
       while (this._events.length && this._events[0].when <= horizon) {
         const ev = this._events.shift();
@@ -204,6 +213,41 @@
 
       /* drop finished nodes so the list stays small */
       for (let i = list.length - 1; i >= 0; i--) if (list[i]._ended) list.splice(i, 1);
+    },
+
+    /* Ramp each automated track across the same window the clips are queued
+       for, so the envelope moves with the audio clock, not the timer. */
+    _applyAutomation(fromCtx, horizonCtx) {
+      const P = this.project, E = this.engine;
+      const sixAt = (t) => this.startPosSix + Grid.secToSix(Math.max(0, t - this.startCtxTime), P.bpm);
+      const fromSix = sixAt(fromCtx), toSix = sixAt(horizonCtx);
+
+      P.tracks.forEach((track, i) => {
+        const bus = E.tracks[i];
+        if (!bus || !bus.auto) return;
+        const lvlFrom = NB.project.autoValueAt(track, 'level', fromSix);
+        const lvlTo = NB.project.autoValueAt(track, 'level', toSix);
+        const panFrom = NB.project.autoValueAt(track, 'pan', fromSix);
+        const panTo = NB.project.autoValueAt(track, 'pan', toSix);
+
+        if (lvlFrom == null) {
+          if (bus.auto._autoActive) { bus.auto.gain.cancelScheduledValues(fromCtx); bus.auto.gain.setValueAtTime(1, fromCtx); bus.auto._autoActive = false; }
+        } else {
+          bus.auto._autoActive = true;
+          bus.auto.gain.setValueAtTime(Math.max(0.0001, lvlFrom), fromCtx);
+          bus.auto.gain.linearRampToValueAtTime(Math.max(0.0001, lvlTo == null ? lvlFrom : lvlTo), horizonCtx);
+        }
+
+        if (bus.panner) {
+          if (panFrom == null) {
+            if (bus.panner._autoActive) { bus.panner.pan.cancelScheduledValues(fromCtx); bus.panner._autoActive = false; }
+          } else {
+            bus.panner._autoActive = true;
+            bus.panner.pan.setValueAtTime(panFrom, fromCtx);
+            bus.panner.pan.linearRampToValueAtTime(panTo == null ? panFrom : panTo, horizonCtx);
+          }
+        }
+      });
     },
 
     _startScheduler() {

@@ -1,6 +1,6 @@
 {
   "name": "neonboom",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Offline-first beat workstation that runs in a browser tab: procedural loop library, pad grid, canvas arrangement, mixer, master FX and WAV export. Zero dependencies.",
   "private": true,
   "type": "module",

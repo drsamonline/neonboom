@@ -85,7 +85,7 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | # | Feature | Effort | Bloat | Why it matters |
 |---|---|---|---|---|
 | 22 | ~~Per-clip pitch and reverse~~ — **shipped in 1.2.0** | — | — | — |
-| 23 | **Automation lanes** for volume/pan/FX (draw a line, hear it) | L | med | the difference between a loop player and a DAW |
+| 23 | ~~Automation lanes~~ — **shipped in 1.8.0** (level + pan envelopes, played and exported) | — | — | — |
 | 24 | ~~Stem export~~ — **shipped in 1.2.0** (`NB.Wav.renderStems` + `NB.Wav.zip`) | — | — | — |
 | 25 | ~~Clip fades~~ — **shipped in 1.2.0** (drawn wedges + gain envelope) | — | — | equal-power curves still to do |
 | 26 | **MIDI-in** (Web MIDI): pads on notes, knobs on CC | M | low | makes it playable with hardware |
@@ -99,8 +99,8 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
 Everything in the "cheap" column is now done except **#36** (roving-tabindex keyboard nav).
-What is left is the two big ones — **#23 automation lanes** and **#26 MIDI-in** — plus
-**#34 WSOLA time-stretch** and **#28 scene launcher**, and the distribution items (#46–#52).
+What is left: **#26 MIDI-in**, **#34 WSOLA time-stretch**, **#28 scene launcher**, **#36** keyboard
+nav, **#58** minified build, and the distribution items (#46–#52).
 
 ---
 

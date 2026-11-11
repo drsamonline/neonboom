@@ -5,6 +5,25 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.8.0] — 2026-11-11
+
+Automation lanes — the last big musical feature on the roadmap.
+
+### Added
+- **Per-track automation** for **level** and **pan**. Press **A** in a track header to cycle the lane
+  off → level → pan. Click to add a point, drag to move it, alt-click to remove it.
+- Automation runs on its own `auto` gain node *ahead of* the fader, so the envelope and the
+  mute/solo/volume controls never fight over the same parameter.
+- Playback drives the envelope from the scheduler: each 25 ms tick ramps the node across the same
+  180 ms window the clips are queued for, so automation moves with the audio clock.
+- Export schedules one ramp per breakpoint inside the offline context, so a bounce matches.
+
+### Changed
+- `buildTrackBus` chain is now clips → **auto** → fader → panner → master (+ sends).
+- Automation is saved in the project file and restored with the autosave.
+
+---
+
 ## [1.7.0] — 2026-11-11
 
 Editing polish and the accessibility pass.

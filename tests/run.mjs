@@ -769,6 +769,65 @@ console.log('\n14 · templates, multi-select, appearance');
   await page.close(); await page.__ctx.close();
 }
 
+/* --------------------------------------------------------- 15. automation */
+console.log('\n15 · automation lanes');
+{
+  const { page, errors } = await open(APP);
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, o = {};
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const t = NB.Project.tracks[0];
+
+    NB.project.autoPoint(t, 'level', 0, 0.05);
+    NB.project.autoPoint(t, 'level', 64, 1);
+    o.atStart = NB.project.autoValueAt(t, 'level', 0);
+    o.atMid = +NB.project.autoValueAt(t, 'level', 32).toFixed(2);
+    o.atEnd = NB.project.autoValueAt(t, 'level', 64);
+    o.before = NB.project.autoValueAt(t, 'level', 0) !== null;
+
+    /* offline render follows the envelope: quiet head, loud tail */
+    NB.Project.tracks.forEach((x, i) => { x.mute = i !== 0; });
+    const { rendered } = await NB.Wav.renderArrangement({
+      sampleLibrary: NB.Library.items, project: NB.Project, engine: NB.Engine, fx: NB.Fx.snapshot(),
+    });
+    const ch = rendered.getChannelData(0), sr = rendered.sampleRate;
+    const peak = (a, b) => {
+      let m = 0;
+      for (let i = Math.floor(a * sr); i < Math.min(ch.length, Math.floor(b * sr)); i++) m = Math.max(m, Math.abs(ch[i]));
+      return +m.toFixed(3);
+    };
+    o.head = peak(0.1, 0.4);
+    o.tail = peak(9, 11);
+    NB.Project.tracks.forEach((x) => { x.mute = false; });
+
+    /* live: the automation node follows the envelope */
+    NB.Transport.play(); await sleep(300);
+    o.autoNode = +NB.Engine.tracks[0].auto.gain.value.toFixed(2);
+    NB.Transport.pause();
+
+    /* lane toggle cycles level → pan → off, re-querying the button each time */
+    NB.Timeline.rebuildHeaders();
+    const clickAuto = () => document.querySelectorAll('.trackHead')[0].querySelector('[data-act=auto]').click();
+    clickAuto(); o.mode1 = NB.Project.tracks[0].autoMode;
+    clickAuto(); o.mode2 = NB.Project.tracks[0].autoMode;
+    clickAuto(); o.mode3 = NB.Project.tracks[0].autoMode;
+
+    /* alt-click removal path (through the model, as the lane calls it) */
+    o.removed = NB.project.autoRemove(t, 'level', 64);
+    o.left = (t.automation.level || []).length;
+    o.afterRemove = NB.project.autoValueAt(t, 'level', 64);
+    return o;
+  });
+  check('automation interpolates between points', o.atStart === 0.05 && o.atEnd === 1 && Math.abs(o.atMid - 0.53) < 0.02, { a: o.atStart, m: o.atMid, z: o.atEnd });
+  check('export follows the envelope', o.tail > o.head * 3, { head: o.head, tail: o.tail });
+  check('playback follows the envelope', o.autoNode > 0 && o.autoNode < 0.5, o.autoNode);
+  check('lane toggle cycles level → pan → off', o.mode1 === 'level' && o.mode2 === 'pan' && o.mode3 === null, [o.mode1, o.mode2, o.mode3]);
+  check('a point can be removed', o.removed && o.left === 1, { removed: o.removed, left: o.left });
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await page.__ctx.close();
+}
+
 /* ---------------------------------------------------------- 11. standalone */
 console.log('\n11 · standalone single-file build');
 {

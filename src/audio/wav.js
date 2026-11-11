@@ -97,6 +97,24 @@
       if (bus.panner) bus.panner.pan.value = t.pan;
       if (bus.sendA) bus.sendA.gain.value = audible ? (t.sendA || 0) : 0;
       if (bus.sendB) bus.sendB.gain.value = audible ? (t.sendB || 0) : 0;
+
+      /* automation: one ramp per breakpoint, plus the clip-window edges */
+      const lvl = (t.automation && t.automation.level) || [];
+      if (lvl.length && bus.auto) {
+        const pts = [{ six: startSix, v: lvl[0].v }, ...lvl, { six: endSix, v: lvl[lvl.length - 1].v }];
+        pts.forEach((p) => {
+          const at = Grid.sixToSec(Math.max(0, p.six - startSix), bpm);
+          bus.auto.gain.linearRampToValueAtTime(Math.max(0.0001, p.v), Math.max(0.001, at));
+        });
+      }
+      const panPts = (t.automation && t.automation.pan) || [];
+      if (panPts.length && bus.panner) {
+        const pts = [{ six: startSix, v: panPts[0].v }, ...panPts, { six: endSix, v: panPts[panPts.length - 1].v }];
+        pts.forEach((p) => {
+          const at = Grid.sixToSec(Math.max(0, p.six - startSix), bpm);
+          bus.panner.pan.linearRampToValueAtTime(p.v, Math.max(0.001, at));
+        });
+      }
       return bus;
     });
 

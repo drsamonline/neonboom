@@ -33,10 +33,12 @@ Legend: ✅ implemented and tested · 🔎 implemented, verified manually · ⚠
 |---|---|---|
 | `AudioEngine` | Owns the `AudioContext` and the master chain | ✅ |
 | `_buildMasterChain(ctx, dest)` | EQ → dry/delay/reverb sends → bitcrusher → limiter → master gain → destination. Reused offline for export | ✅ |
-| `buildTrackBus(ctx, master)` | Per-track gain → panner → master input, plus delay/reverb sends and a meter tap | ✅ |
+| `buildTrackBus(ctx, master)` | auto → fader → panner → master input, plus delay/reverb sends and a meter tap | ✅ |
+| `setAutomation(i, value, at, until, pan)` | Ramps the automation node across the scheduling window | ✅ |
 | `ensureTrackBuses(n)` | Grows or shrinks the bus array when tracks are added/removed | ✅ |
 | `setTrackVolume(i,v)` / `setTrackPan(i,p)` | Ramped parameter writes | ✅ |
 | `setTrackSends(i,a,b)` | Post-fader delay / reverb send amounts | ✅ |
+| `autoValueAt(track, kind, six)` / `autoPoint` / `autoRemove` | Breakpoint envelopes for level and pan | ✅ |
 | `AudioWorklet.prepare(ctx)` | Registers the crusher module (data: URL) per context | ✅ |
 | `applyMix(tracks)` | Resolves mute/solo into real gains so it silences audio that is already playing | ✅ |
 | `readMasterVU(bands)` / `readTrackLevel(i)` | Analyser reads with reusable buffers (no per-frame allocation) | ✅ |
@@ -125,6 +127,7 @@ Voices: `kickHit`, `snareHit`, `clapHit`, `hatHit`, `crashHit`, `bass808`, `stab
 | `openClipEditor(id)` | Trim handles, normalise, fit-to-bar, halve, reset | ✅ |
 | `select(id, additive)` / `selectionIds()` | Multi-selection set used by every bulk action | ✅ |
 | `selectInRect(x0,y0,x1,y1)` | Marquee selection | ✅ |
+| `_drawAutomation` / `_startAutoEdit` | Automation lane drawing and point editing | ✅ |
 | `scrollToPlayhead()` | Follows the playhead while rolling | 🔎 |
 
 ## 6. Pads — `src/ui/pads.js`

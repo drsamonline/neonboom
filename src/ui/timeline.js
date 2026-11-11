@@ -134,6 +134,7 @@
           <div class="thRow">
             <button class="tbtn m ${t.mute ? 'on' : ''}" data-act="mute" title="Mute">M</button>
             <button class="tbtn s ${t.solo ? 'on' : ''}" data-act="solo" title="Solo">S</button>
+            <button class="tbtn a ${t.autoMode ? 'on' : ''}" data-act="auto" title="Automation lane (level → pan → off)">A</button>
             <div class="meter"><i data-meter="${i}"></i></div>
           </div>
           <div class="thRow">
@@ -167,6 +168,12 @@
         if (btn) {
           if (btn.dataset.act === 'mute') t.mute = !t.mute;
           if (btn.dataset.act === 'solo') t.solo = !t.solo;
+          if (btn.dataset.act === 'auto') {
+            const cycle = [null, 'level', 'pan'];
+            t.autoMode = cycle[(cycle.indexOf(t.autoMode || null) + 1) % cycle.length];
+            this.rebuildHeaders(); this.draw();
+            if (t.autoMode) NB.util.toast(`${t.name}: ${t.autoMode} automation — click the lane to add points, alt-click to remove`, '', 2600);
+          }
           NB.Engine.applyMix(this.tracks);
           this.rebuildHeaders();
           this.draw();
@@ -238,6 +245,12 @@
         ctx.strokeStyle = 'rgba(255,176,32,.35)';
         ctx.beginPath(); ctx.moveTo(a + .5, sy); ctx.lineTo(a + .5, sy + H);
         ctx.moveTo(b - .5, sy); ctx.lineTo(b - .5, sy + H); ctx.stroke();
+      }
+
+      /* automation lanes sit on top of the clips */
+      for (let i = firstTrack; i <= lastTrack; i++) {
+        const track = this.tracks[i];
+        if (track && track.autoMode) this._drawAutomation(ctx, track, i, firstSix, lastSix, px, th);
       }
 
       /* empty lanes get a hint instead of silence */
@@ -434,6 +447,105 @@
       this._rulerDirty = false;
     },
 
+
+    /* ---- automation lane ------------------------------------------------ */
+    _autoY(track, i, v, th) {
+      const pad = 9;
+      const norm = track.autoMode === 'pan' ? (v + 1) / 2 : v;
+      return i * th + pad + (1 - norm) * (th - pad * 2);
+    },
+    _autoV(track, y, i, th) {
+      const pad = 9;
+      const norm = clamp(1 - (y - i * th - pad) / (th - pad * 2), 0, 1);
+      return track.autoMode === 'pan' ? norm * 2 - 1 : norm;
+    },
+
+    _drawAutomation(ctx, track, i, firstSix, lastSix, px, th) {
+      const kind = track.autoMode;
+      const pts = (track.automation && track.automation[kind]) || [];
+      const top = i * th + 9, bottom = i * th + th - 9;
+      ctx.fillStyle = 'rgba(8,10,12,.45)';
+      ctx.fillRect(firstSix * px, top, (lastSix - firstSix) * px, bottom - top);
+
+      const valueAt = (six) => {
+        const v = NB.project.autoValueAt(track, kind, six);
+        return v == null ? (kind === 'pan' ? 0 : 1) : v;
+      };
+
+      /* the curve, sampled every 4 px so a ramp looks like a ramp */
+      ctx.beginPath();
+      ctx.strokeStyle = kind === 'pan' ? '#5b8def' : '#ffb020';
+      ctx.lineWidth = 1.6;
+      const step = 4 / px;
+      for (let six = firstSix; six <= lastSix; six += step) {
+        const x = six * px, y = this._autoY(track, i, valueAt(six), th);
+        if (six === firstSix) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      /* breakpoints */
+      pts.forEach((p) => {
+        if (p.six < firstSix - 8 || p.six > lastSix + 8) return;
+        const x = p.six * px, y = this._autoY(track, i, p.v, th);
+        ctx.beginPath();
+        ctx.arc(x, y, 3.6, 0, Math.PI * 2);
+        ctx.fillStyle = '#0b0d10';
+        ctx.fill();
+        ctx.strokeStyle = kind === 'pan' ? '#5b8def' : '#ffb020';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+
+      ctx.font = '700 8px ui-monospace,Menlo,monospace';
+      ctx.fillStyle = kind === 'pan' ? 'rgba(91,141,239,.9)' : 'rgba(255,176,32,.9)';
+      ctx.fillText(kind === 'pan' ? 'PAN' : 'LEVEL', firstSix * px + 6, top + 9);
+    },
+
+    /* click to add, drag to move, alt-click to remove */
+    _startAutoEdit(e, x, y, trackIdx) {
+      const track = this.tracks[trackIdx];
+      const th = this.trackH();
+      const px = this.pxPerSix();
+      const kind = track.autoMode;
+      const six = Math.round(x / px);
+      const pts = (track.automation && track.automation[kind]) || [];
+      const near = pts.find((p) => Math.abs(p.six * px - x) < 8 &&
+        Math.abs(this._autoY(track, trackIdx, p.v, th) - y) < 12);
+
+      if (near && (e.altKey || e.metaKey)) {
+        NB.History.push('Remove automation point');
+        NB.project.autoRemove(track, kind, near.six);
+        NB.Transport.reanchor();
+        NB.Persistence.saveSoon();
+        this.draw();
+        return;
+      }
+
+      NB.History.push(near ? 'Move automation point' : 'Add automation point');
+      const v = this._autoV(track, y, trackIdx, th);
+      let point = near;
+      if (point) { point.six = Math.max(0, six); point.v = v; pts.sort((a, b) => a.six - b.six); }
+      else { NB.project.autoPoint(track, kind, six, v); point = pts.find((q) => Math.abs(q.six - six) < 2); }
+
+      const move = (ev) => {
+        const p = this._local(ev);
+        if (!point) return;
+        point.six = Math.max(0, Math.round(p.x / px));
+        point.v = this._autoV(track, p.y, trackIdx, th);
+        pts.sort((a, b) => a.six - b.six);
+        this.draw();
+      };
+      const up = () => {
+        this.canvas.removeEventListener('pointermove', move);
+        NB.Transport.reanchor();
+        NB.Persistence.saveSoon();
+        this.draw();
+      };
+      this.canvas.addEventListener('pointermove', move);
+      this.canvas.addEventListener('pointerup', up, { once: true });
+      this.draw();
+    },
+
     drawRuler() {
       if (!this.rctx) return;
       if (!this._rulerBase || this._rulerDirty) this.drawRulerBase();
@@ -526,6 +638,14 @@
         if (e.button === 2) return;             // context menu handled below
         c.setPointerCapture(e.pointerId);
         const { x, y } = this._local(e);
+        const trackIdxAt = Math.floor(y / this.trackH());
+        const autoTrack = this.tracks[trackIdxAt];
+        if (autoTrack && autoTrack.autoMode) {
+          this.selectedTrackId = autoTrack.id;
+          this._startAutoEdit(e, x, y, trackIdxAt);
+          return;
+        }
+
         const hit = this.hitTest(x, y);
         if (!hit) return;
 

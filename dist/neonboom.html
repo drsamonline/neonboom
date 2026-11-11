@@ -1585,9 +1585,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
                         └→ sendB → master.convolver (post-fader reverb send)
        plus a meter tap on the fader. */
     buildTrackBus(ctx, masterChain) {
+      /* clips → auto → gain(fader/mute) → panner → master (+ sends).
+         Automation writes `auto`, so it never fights the fader or mute. */
+      const auto = ctx.createGain(); auto.gain.value = 1;
       const gain = ctx.createGain(); gain.gain.value = 0.85;
       const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
       const post = panner || gain;
+      auto.connect(gain);
       gain.connect(post);
       post.connect(masterChain.input);
 
@@ -1601,7 +1605,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         analyser = ctx.createAnalyser(); analyser.fftSize = 128;
         gain.connect(analyser);
       }
-      return { gain, panner, sendA, sendB, analyser };
+      return { auto, gain, panner, sendA, sendB, analyser };
     }
 
     ensureTrackBuses(count) {
@@ -1611,6 +1615,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       while (this.tracks.length > count) {
         const b = this.tracks.pop();
         try {
+          b.auto && b.auto.disconnect();
           b.gain.disconnect(); b.panner && b.panner.disconnect();
           b.sendA && b.sendA.disconnect(); b.sendB && b.sendB.disconnect();
         } catch (e) {}
@@ -1625,6 +1630,20 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       const b = this.tracks[i]; if (!b) return;
       if (b.panner) b.panner.pan.setTargetAtTime(clamp(p, -1, 1), this.ctx.currentTime, 0.01);
     }
+    /* Ramp the automation node. `until` is the horizon the ramp should reach,
+       which is how the scheduler keeps automation in step with playback. */
+    setAutomation(i, value, atTime, until, panValue) {
+      const b = this.tracks[i];
+      if (!b || !b.auto) return;
+      const t = atTime == null ? this.ctx.currentTime : atTime;
+      if (value == null) b.auto.gain.cancelScheduledValues(t);
+      else b.auto.gain.linearRampToValueAtTime(Math.max(0.0001, value), until == null ? t : until);
+      if (panValue !== undefined && b.panner) {
+        if (panValue == null) b.panner.pan.cancelScheduledValues(t);
+        else b.panner.pan.linearRampToValueAtTime(panValue, until == null ? t : until);
+      }
+    }
+
     setTrackSends(i, a, b2) {
       const b = this.tracks[i]; if (!b) return;
       if (b.sendA) b.sendA.gain.setTargetAtTime(clamp(a || 0, 0, 1), this.ctx.currentTime, 0.01);
@@ -1909,6 +1928,24 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       if (bus.panner) bus.panner.pan.value = t.pan;
       if (bus.sendA) bus.sendA.gain.value = audible ? (t.sendA || 0) : 0;
       if (bus.sendB) bus.sendB.gain.value = audible ? (t.sendB || 0) : 0;
+
+      /* automation: one ramp per breakpoint, plus the clip-window edges */
+      const lvl = (t.automation && t.automation.level) || [];
+      if (lvl.length && bus.auto) {
+        const pts = [{ six: startSix, v: lvl[0].v }, ...lvl, { six: endSix, v: lvl[lvl.length - 1].v }];
+        pts.forEach((p) => {
+          const at = Grid.sixToSec(Math.max(0, p.six - startSix), bpm);
+          bus.auto.gain.linearRampToValueAtTime(Math.max(0.0001, p.v), Math.max(0.001, at));
+        });
+      }
+      const panPts = (t.automation && t.automation.pan) || [];
+      if (panPts.length && bus.panner) {
+        const pts = [{ six: startSix, v: panPts[0].v }, ...panPts, { six: endSix, v: panPts[panPts.length - 1].v }];
+        pts.forEach((p) => {
+          const at = Grid.sixToSec(Math.max(0, p.six - startSix), bpm);
+          bus.panner.pan.linearRampToValueAtTime(p.v, Math.max(0.001, at));
+        });
+      }
       return bus;
     });
 
@@ -2105,6 +2142,8 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       id: uid('trk'), name: `Track ${i + 1}`,
       color: NB.util.paletteColor(i),
       vol: 0.85, pan: 0, sendA: 0, sendB: 0, mute: false, solo: false, clips: [],
+      automation: { level: [], pan: [] },     // [{six, v}] breakpoints, sorted
+      autoMode: null,                          // 'level' | 'pan' | null (lane shown)
     };
   }
 
@@ -2158,6 +2197,48 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   }
 
   function clipEnd(clip) { return clip.startSix + (clip.trimEndSix - clip.trimStartSix); }
+
+  /* ---- automation ------------------------------------------------------
+     A breakpoint envelope per track. Values are multipliers: `level` scales
+     the track (0 = silent, 1 = as the fader says), `pan` overrides the pan
+     knob. With no points the envelope is flat and the knobs win. */
+  const AUTOMATION_RANGE = { level: [0, 1], pan: [-1, 1] };
+
+  function autoValueAt(track, kind, six) {
+    const pts = (track.automation && track.automation[kind]) || [];
+    if (!pts.length) return null;
+    if (six <= pts[0].six) return pts[0].v;
+    const last = pts[pts.length - 1];
+    if (six >= last.six) return last.v;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (six >= a.six && six <= b.six) {
+        const t = (six - a.six) / Math.max(1e-6, b.six - a.six);
+        return a.v + (b.v - a.v) * t;
+      }
+    }
+    return last.v;
+  }
+
+  function autoPoint(track, kind, six, v) {
+    const [min, max] = AUTOMATION_RANGE[kind];
+    if (!track.automation) track.automation = { level: [], pan: [] };
+    const pts = track.automation[kind] || (track.automation[kind] = []);
+    const value = clamp(v, min, max);
+    const at = Math.max(0, Math.round(six));
+    const existing = pts.findIndex((p) => Math.abs(p.six - at) < 1);
+    if (existing >= 0) pts[existing].v = value;
+    else pts.push({ six: at, v: value });
+    pts.sort((a, b) => a.six - b.six);
+    return pts;
+  }
+
+  function autoRemove(track, kind, six) {
+    const pts = (track.automation && track.automation[kind]) || [];
+    const i = pts.findIndex((p) => Math.abs(p.six - six) < 2);
+    if (i >= 0) pts.splice(i, 1);
+    return i >= 0;
+  }
 
   function addTrack() {
     const t = newTrack(Project.tracks.length);
@@ -2493,6 +2574,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       tracks: Project.tracks.map((t) => ({
         name: t.name, color: t.color, vol: t.vol, pan: t.pan,
         sendA: t.sendA || 0, sendB: t.sendB || 0, mute: t.mute, solo: t.solo,
+        automation: t.automation || { level: [], pan: [] },
         clips: t.clips.map((c) => ({
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
           startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
@@ -2519,6 +2601,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       track.pan = t.pan || 0;
       track.sendA = t.sendA || 0; track.sendB = t.sendB || 0;
       track.mute = !!t.mute; track.solo = !!t.solo;
+      track.automation = { level: [], pan: [], ...(t.automation || {}) };
       track.clips = (t.clips || []).map((c) => {
         const s = Library.byName(c.sampleName);
         if (!s) return null;
@@ -2581,6 +2664,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   NB.History = History;
   NB.Persistence = Persistence;
   NB.project = { initTracks, newTrack, newClip, clipEnd, addTrack, removeTrack, findClip,
+    autoValueAt, autoPoint, autoRemove, AUTOMATION_RANGE,
     removeClip, projectFile, loadProjectFile, buildDemo, computePeaks,
     normaliseClip, reversedBuffer, SYNTH_VERSION };
   NB.LoopCache = LoopCache;
@@ -3008,6 +3092,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this._passStartCtx = this.startCtxTime;
       this._passStartSix = pos;
       this._metroLast = -1;
+      this.project.tracks.forEach((t, i) => {
+        const bus = this.engine.tracks[i];
+        if (!bus || !bus.auto) return;
+        bus.auto.gain.cancelScheduledValues(this.startCtxTime);
+        bus.auto._autoActive = false;
+        if (bus.panner) { bus.panner.pan.cancelScheduledValues(this.startCtxTime); bus.panner._autoActive = false; }
+      });
       this._schedulerTick();
     },
 
@@ -3065,6 +3156,8 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       const horizon = E.ctx.currentTime + LOOKAHEAD;
       this._fill(horizon);
 
+      this._applyAutomation(E.ctx.currentTime, horizon);
+
       const list = E._activeSources;
       while (this._events.length && this._events[0].when <= horizon) {
         const ev = this._events.shift();
@@ -3078,6 +3171,41 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
       /* drop finished nodes so the list stays small */
       for (let i = list.length - 1; i >= 0; i--) if (list[i]._ended) list.splice(i, 1);
+    },
+
+    /* Ramp each automated track across the same window the clips are queued
+       for, so the envelope moves with the audio clock, not the timer. */
+    _applyAutomation(fromCtx, horizonCtx) {
+      const P = this.project, E = this.engine;
+      const sixAt = (t) => this.startPosSix + Grid.secToSix(Math.max(0, t - this.startCtxTime), P.bpm);
+      const fromSix = sixAt(fromCtx), toSix = sixAt(horizonCtx);
+
+      P.tracks.forEach((track, i) => {
+        const bus = E.tracks[i];
+        if (!bus || !bus.auto) return;
+        const lvlFrom = NB.project.autoValueAt(track, 'level', fromSix);
+        const lvlTo = NB.project.autoValueAt(track, 'level', toSix);
+        const panFrom = NB.project.autoValueAt(track, 'pan', fromSix);
+        const panTo = NB.project.autoValueAt(track, 'pan', toSix);
+
+        if (lvlFrom == null) {
+          if (bus.auto._autoActive) { bus.auto.gain.cancelScheduledValues(fromCtx); bus.auto.gain.setValueAtTime(1, fromCtx); bus.auto._autoActive = false; }
+        } else {
+          bus.auto._autoActive = true;
+          bus.auto.gain.setValueAtTime(Math.max(0.0001, lvlFrom), fromCtx);
+          bus.auto.gain.linearRampToValueAtTime(Math.max(0.0001, lvlTo == null ? lvlFrom : lvlTo), horizonCtx);
+        }
+
+        if (bus.panner) {
+          if (panFrom == null) {
+            if (bus.panner._autoActive) { bus.panner.pan.cancelScheduledValues(fromCtx); bus.panner._autoActive = false; }
+          } else {
+            bus.panner._autoActive = true;
+            bus.panner.pan.setValueAtTime(panFrom, fromCtx);
+            bus.panner.pan.linearRampToValueAtTime(panTo == null ? panFrom : panTo, horizonCtx);
+          }
+        }
+      });
     },
 
     _startScheduler() {
@@ -3282,6 +3410,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           <div class="thRow">
             <button class="tbtn m ${t.mute ? 'on' : ''}" data-act="mute" title="Mute">M</button>
             <button class="tbtn s ${t.solo ? 'on' : ''}" data-act="solo" title="Solo">S</button>
+            <button class="tbtn a ${t.autoMode ? 'on' : ''}" data-act="auto" title="Automation lane (level → pan → off)">A</button>
             <div class="meter"><i data-meter="${i}"></i></div>
           </div>
           <div class="thRow">
@@ -3315,6 +3444,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         if (btn) {
           if (btn.dataset.act === 'mute') t.mute = !t.mute;
           if (btn.dataset.act === 'solo') t.solo = !t.solo;
+          if (btn.dataset.act === 'auto') {
+            const cycle = [null, 'level', 'pan'];
+            t.autoMode = cycle[(cycle.indexOf(t.autoMode || null) + 1) % cycle.length];
+            this.rebuildHeaders(); this.draw();
+            if (t.autoMode) NB.util.toast(`${t.name}: ${t.autoMode} automation — click the lane to add points, alt-click to remove`, '', 2600);
+          }
           NB.Engine.applyMix(this.tracks);
           this.rebuildHeaders();
           this.draw();
@@ -3386,6 +3521,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         ctx.strokeStyle = 'rgba(255,176,32,.35)';
         ctx.beginPath(); ctx.moveTo(a + .5, sy); ctx.lineTo(a + .5, sy + H);
         ctx.moveTo(b - .5, sy); ctx.lineTo(b - .5, sy + H); ctx.stroke();
+      }
+
+      /* automation lanes sit on top of the clips */
+      for (let i = firstTrack; i <= lastTrack; i++) {
+        const track = this.tracks[i];
+        if (track && track.autoMode) this._drawAutomation(ctx, track, i, firstSix, lastSix, px, th);
       }
 
       /* empty lanes get a hint instead of silence */
@@ -3582,6 +3723,105 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this._rulerDirty = false;
     },
 
+
+    /* ---- automation lane ------------------------------------------------ */
+    _autoY(track, i, v, th) {
+      const pad = 9;
+      const norm = track.autoMode === 'pan' ? (v + 1) / 2 : v;
+      return i * th + pad + (1 - norm) * (th - pad * 2);
+    },
+    _autoV(track, y, i, th) {
+      const pad = 9;
+      const norm = clamp(1 - (y - i * th - pad) / (th - pad * 2), 0, 1);
+      return track.autoMode === 'pan' ? norm * 2 - 1 : norm;
+    },
+
+    _drawAutomation(ctx, track, i, firstSix, lastSix, px, th) {
+      const kind = track.autoMode;
+      const pts = (track.automation && track.automation[kind]) || [];
+      const top = i * th + 9, bottom = i * th + th - 9;
+      ctx.fillStyle = 'rgba(8,10,12,.45)';
+      ctx.fillRect(firstSix * px, top, (lastSix - firstSix) * px, bottom - top);
+
+      const valueAt = (six) => {
+        const v = NB.project.autoValueAt(track, kind, six);
+        return v == null ? (kind === 'pan' ? 0 : 1) : v;
+      };
+
+      /* the curve, sampled every 4 px so a ramp looks like a ramp */
+      ctx.beginPath();
+      ctx.strokeStyle = kind === 'pan' ? '#5b8def' : '#ffb020';
+      ctx.lineWidth = 1.6;
+      const step = 4 / px;
+      for (let six = firstSix; six <= lastSix; six += step) {
+        const x = six * px, y = this._autoY(track, i, valueAt(six), th);
+        if (six === firstSix) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      /* breakpoints */
+      pts.forEach((p) => {
+        if (p.six < firstSix - 8 || p.six > lastSix + 8) return;
+        const x = p.six * px, y = this._autoY(track, i, p.v, th);
+        ctx.beginPath();
+        ctx.arc(x, y, 3.6, 0, Math.PI * 2);
+        ctx.fillStyle = '#0b0d10';
+        ctx.fill();
+        ctx.strokeStyle = kind === 'pan' ? '#5b8def' : '#ffb020';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+
+      ctx.font = '700 8px ui-monospace,Menlo,monospace';
+      ctx.fillStyle = kind === 'pan' ? 'rgba(91,141,239,.9)' : 'rgba(255,176,32,.9)';
+      ctx.fillText(kind === 'pan' ? 'PAN' : 'LEVEL', firstSix * px + 6, top + 9);
+    },
+
+    /* click to add, drag to move, alt-click to remove */
+    _startAutoEdit(e, x, y, trackIdx) {
+      const track = this.tracks[trackIdx];
+      const th = this.trackH();
+      const px = this.pxPerSix();
+      const kind = track.autoMode;
+      const six = Math.round(x / px);
+      const pts = (track.automation && track.automation[kind]) || [];
+      const near = pts.find((p) => Math.abs(p.six * px - x) < 8 &&
+        Math.abs(this._autoY(track, trackIdx, p.v, th) - y) < 12);
+
+      if (near && (e.altKey || e.metaKey)) {
+        NB.History.push('Remove automation point');
+        NB.project.autoRemove(track, kind, near.six);
+        NB.Transport.reanchor();
+        NB.Persistence.saveSoon();
+        this.draw();
+        return;
+      }
+
+      NB.History.push(near ? 'Move automation point' : 'Add automation point');
+      const v = this._autoV(track, y, trackIdx, th);
+      let point = near;
+      if (point) { point.six = Math.max(0, six); point.v = v; pts.sort((a, b) => a.six - b.six); }
+      else { NB.project.autoPoint(track, kind, six, v); point = pts.find((q) => Math.abs(q.six - six) < 2); }
+
+      const move = (ev) => {
+        const p = this._local(ev);
+        if (!point) return;
+        point.six = Math.max(0, Math.round(p.x / px));
+        point.v = this._autoV(track, p.y, trackIdx, th);
+        pts.sort((a, b) => a.six - b.six);
+        this.draw();
+      };
+      const up = () => {
+        this.canvas.removeEventListener('pointermove', move);
+        NB.Transport.reanchor();
+        NB.Persistence.saveSoon();
+        this.draw();
+      };
+      this.canvas.addEventListener('pointermove', move);
+      this.canvas.addEventListener('pointerup', up, { once: true });
+      this.draw();
+    },
+
     drawRuler() {
       if (!this.rctx) return;
       if (!this._rulerBase || this._rulerDirty) this.drawRulerBase();
@@ -3674,6 +3914,14 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         if (e.button === 2) return;             // context menu handled below
         c.setPointerCapture(e.pointerId);
         const { x, y } = this._local(e);
+        const trackIdxAt = Math.floor(y / this.trackH());
+        const autoTrack = this.tracks[trackIdxAt];
+        if (autoTrack && autoTrack.autoMode) {
+          this.selectedTrackId = autoTrack.id;
+          this._startAutoEdit(e, x, y, trackIdxAt);
+          return;
+        }
+
         const hit = this.hitTest(x, y);
         if (!hit) return;
 
@@ -5934,7 +6182,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '1.7.0',
+    version: '1.8.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

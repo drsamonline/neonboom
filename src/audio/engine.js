@@ -212,9 +212,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
                         └→ sendB → master.convolver (post-fader reverb send)
        plus a meter tap on the fader. */
     buildTrackBus(ctx, masterChain) {
+      /* clips → auto → gain(fader/mute) → panner → master (+ sends).
+         Automation writes `auto`, so it never fights the fader or mute. */
+      const auto = ctx.createGain(); auto.gain.value = 1;
       const gain = ctx.createGain(); gain.gain.value = 0.85;
       const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
       const post = panner || gain;
+      auto.connect(gain);
       gain.connect(post);
       post.connect(masterChain.input);
 
@@ -228,7 +232,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         analyser = ctx.createAnalyser(); analyser.fftSize = 128;
         gain.connect(analyser);
       }
-      return { gain, panner, sendA, sendB, analyser };
+      return { auto, gain, panner, sendA, sendB, analyser };
     }
 
     ensureTrackBuses(count) {
@@ -238,6 +242,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       while (this.tracks.length > count) {
         const b = this.tracks.pop();
         try {
+          b.auto && b.auto.disconnect();
           b.gain.disconnect(); b.panner && b.panner.disconnect();
           b.sendA && b.sendA.disconnect(); b.sendB && b.sendB.disconnect();
         } catch (e) {}
@@ -252,6 +257,20 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       const b = this.tracks[i]; if (!b) return;
       if (b.panner) b.panner.pan.setTargetAtTime(clamp(p, -1, 1), this.ctx.currentTime, 0.01);
     }
+    /* Ramp the automation node. `until` is the horizon the ramp should reach,
+       which is how the scheduler keeps automation in step with playback. */
+    setAutomation(i, value, atTime, until, panValue) {
+      const b = this.tracks[i];
+      if (!b || !b.auto) return;
+      const t = atTime == null ? this.ctx.currentTime : atTime;
+      if (value == null) b.auto.gain.cancelScheduledValues(t);
+      else b.auto.gain.linearRampToValueAtTime(Math.max(0.0001, value), until == null ? t : until);
+      if (panValue !== undefined && b.panner) {
+        if (panValue == null) b.panner.pan.cancelScheduledValues(t);
+        else b.panner.pan.linearRampToValueAtTime(panValue, until == null ? t : until);
+      }
+    }
+
     setTrackSends(i, a, b2) {
       const b = this.tracks[i]; if (!b) return;
       if (b.sendA) b.sendA.gain.setTargetAtTime(clamp(a || 0, 0, 1), this.ctx.currentTime, 0.01);

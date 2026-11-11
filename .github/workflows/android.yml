@@ -21,6 +21,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Install build deps
+        run: npm ci
+
       - name: Build the web payload
         run: |
           node scripts/build-standalone.mjs

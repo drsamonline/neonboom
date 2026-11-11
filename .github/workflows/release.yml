@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Install build deps
+        run: npm ci
       - run: node scripts/build-standalone.mjs
       - name: Zip the source bundle
         run: zip -r neonboom-source.zip index.html manifest.webmanifest sw.js src assets docs scripts tests LICENSE README.md CREDITS.md
@@ -45,6 +47,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Install build deps
+        run: npm ci
       - run: node scripts/build-standalone.mjs
       - name: Stage the app into the shell
         shell: bash

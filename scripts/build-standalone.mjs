@@ -14,7 +14,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { minify as minifyJS } from 'terser';
+/* terser is a dev dependency. If it is missing (a bare checkout, a CI job that
+   skipped npm install) the readable build is still produced and the minified
+   one is skipped with a warning rather than failing the build. */
+let minifyJS = null;
+try {
+  ({ minify: minifyJS } = await import('terser'));
+} catch (e) {
+  console.warn('terser not installed — skipping dist/neonboom.min.html (run npm install)');
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -70,6 +78,10 @@ fs.writeFileSync(readable, out);
 
 /* ------------------------------------------------- minified build ----- */
 const minifiedJS = [];
+if (!minifyJS) {
+  console.log(`built dist/neonboom.html      ${kb(readable)} KB  (readable only)`);
+  process.exit(0);
+}
 for (const chunk of jsChunks) {
   const res = await minifyJS(chunk.code, {
     compress: { passes: 2, drop_debugger: true },

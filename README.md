@@ -72,7 +72,7 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 
 | File | What it is |
 |---|---|
-| `neonboom.min.html` | **177 KB** — the whole app in one file, minified. What you download and ship. Double-click it; runs offline from `file://`, zero network requests. |
+| `neonboom.min.html` | **192 KB** — the whole app in one file, minified. What you download and ship. Double-click it; runs offline from `file://`, zero network requests. |
 | `neonboom.html` | **275 KB** — the same app, readable. Same behaviour, unminified source for reading and debugging. |
 | `NEONBOOM.Setup.*.exe` | Windows installer (x64, NSIS) |
 | `NEONBOOM-*.dmg` | macOS (Intel and Apple Silicon) |

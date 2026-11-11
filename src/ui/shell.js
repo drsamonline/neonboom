@@ -241,16 +241,18 @@
           <div class="row">
             <button class="btn primary" id="exWav">Download WAV</button>
             <button class="btn" id="exLoop">Download loop region</button>
+            <button class="btn" id="exStems">Download stems (.zip)</button>
             <button class="btn" id="exJson">Save project file</button>
             <button class="btn" id="exOpen">Open project file</button>
           </div>
           <div class="row">
             <button class="btn danger" id="exClear">Clear autosave &amp; start over</button>
           </div>
-          <p style="font-size:11px;color:var(--ink-2)">Tip: bounce a short loop region for a sample pack, or the whole arrangement for a track. Long renders (&gt;8 min) take a few seconds and a chunk of memory.</p>
+          <p style="font-size:11px;color:var(--ink-2)">Tip: bounce a short loop region for a sample pack, or the whole arrangement for a track. Stems render each track on its own, through the same master chain, and arrive as one zip. Long renders (&gt;8 min) take a few seconds and a chunk of memory.</p>
         </div>`;
       $('#exWav', host).addEventListener('click', () => this.exportWav(false));
       $('#exLoop', host).addEventListener('click', () => this.exportWav(true));
+      $('#exStems', host).addEventListener('click', () => this.exportStems());
       $('#exJson', host).addEventListener('click', () => this.saveProjectFile());
       $('#exOpen', host).addEventListener('click', () => this.openProjectFile());
       $('#exClear', host).addEventListener('click', async () => {
@@ -327,6 +329,9 @@
             <option value="2"${P.snap === 2 ? ' selected' : ''}>1/8 bar</option>
             <option value="1"${P.snap === 1 ? ' selected' : ''}>1/16 bar</option>
           </select></div>
+        <div class="sheetRow"><label>Swing</label>
+          <input type="range" id="shSwing" min="0" max="0.6" step="0.02" value="${P.swing || 0}">
+          <span class="val" id="shSwingVal">${Math.round((P.swing || 0) * 100)}%</span></div>
         <div class="sheetRow"><label>Metronome</label><input type="checkbox" id="shMetro" ${P.metronome ? 'checked' : ''} style="width:22px;height:22px"></div>
         <div class="sheetBtns">
           <button class="btn" id="shDemo">Load demo</button>
@@ -339,6 +344,11 @@
       const s = $('#sheet');
       $('#shName', s).addEventListener('change', (e) => { P.name = e.target.value || P.name; NB.Persistence.saveSoon(); });
       $('#shSnap', s).addEventListener('change', (e) => { P.snap = parseInt(e.target.value, 10); NB.Persistence.saveSoon(); });
+      $('#shSwing', s).addEventListener('input', (e) => {
+        P.swing = parseFloat(e.target.value);
+        $('#shSwingVal', s).textContent = Math.round(P.swing * 100) + '%';
+      });
+      $('#shSwing', s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
       $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.loadDemo(); });
       $('#shSave', s).addEventListener('click', () => { this.closeSheet(); this.saveProjectFile(); });
@@ -353,16 +363,18 @@
 
     /* ------------------------------------------------------------- sheets */
     wireSheet() {
-      /* ignore the tap that is still in flight when the sheet opens — a
-         long-press otherwise opens and instantly closes it. */
-      $('#scrim').addEventListener('click', () => {
-        if (Date.now() - (this._sheetOpenedAt || 0) < 700) return;
+      /* pointerdown, not click: a long-press opens the sheet while the finger
+         is still down, and the compatibility click that arrives on release
+         would close it again immediately. A pointerdown can only come from a
+         *new* gesture, so dismissal stays predictable on every device. */
+      $('#scrim').addEventListener('pointerdown', () => {
+        if (performance.now() - (this._sheetOpenedAt || 0) < 150) return;
         this.closeSheet();
       });
     },
 
     sheet(html) {
-      this._sheetOpenedAt = Date.now();
+      this._sheetOpenedAt = performance.now();
       const s = $('#sheet');
       s.innerHTML = `<div class="grab"></div>${html}`;
       s.classList.add('on');
@@ -385,9 +397,19 @@
         <div class="sheetRow"><label>Gain</label>
           <input type="range" id="csGain" min="0" max="1.5" step="0.01" value="${gain}">
           <span class="val" id="csGainVal">${Math.round(gain * 100)}%</span></div>
+        <div class="sheetRow"><label>Pitch</label>
+          <input type="range" id="csPitch" min="-12" max="12" step="1" value="${clip.pitch || 0}">
+          <span class="val" id="csPitchVal">${clip.pitch > 0 ? '+' : ''}${clip.pitch || 0} st</span></div>
+        <div class="sheetRow"><label>Fade in</label>
+          <input type="range" id="csFadeIn" min="0" max="${Math.floor((clip.trimEndSix - clip.trimStartSix) / 2)}" step="1" value="${clip.fadeIn || 0}">
+          <span class="val" id="csFadeInVal">${clip.fadeIn || 0}</span></div>
+        <div class="sheetRow"><label>Fade out</label>
+          <input type="range" id="csFadeOut" min="0" max="${Math.floor((clip.trimEndSix - clip.trimStartSix) / 2)}" step="1" value="${clip.fadeOut || 0}">
+          <span class="val" id="csFadeOutVal">${clip.fadeOut || 0}</span></div>
         <div class="sheetRow"><label>Starts</label><span style="font-family:var(--mono);font-size:11px">${Grid.fmtBBT(clip.startSix)}</span></div>
         <div class="sheetRow"><label>Length</label><span style="font-family:var(--mono);font-size:11px">${Grid.fmtBars(clip.trimEndSix - clip.trimStartSix)}</span></div>
         <div class="sheetBtns">
+          <button class="btn" id="csRev">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
           <button class="btn" id="csDup">Duplicate</button>
           <button class="btn" id="csSplit">Split here</button>
           <button class="btn" id="csQuant">Quantize</button>
@@ -399,6 +421,27 @@
         $('#csGainVal', s).textContent = Math.round(clip.gain * 100) + '%';
       });
       $('#csGain', s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      $('#csPitch', s).addEventListener('input', (e) => {
+        clip.pitch = parseInt(e.target.value, 10);
+        $('#csPitchVal', s).textContent = (clip.pitch > 0 ? '+' : '') + clip.pitch + ' st';
+        NB.Timeline.draw();
+      });
+      $('#csPitch', s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      ['csFadeIn', 'csFadeOut'].forEach((id) => {
+        const key = id === 'csFadeIn' ? 'fadeIn' : 'fadeOut';
+        $('#' + id, s).addEventListener('input', (e) => {
+          clip[key] = parseInt(e.target.value, 10);
+          $('#' + id + 'Val', s).textContent = clip[key];
+          NB.Timeline.draw();
+        });
+        $('#' + id, s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      });
+      $('#csRev', s).addEventListener('click', (e) => {
+        NB.History.push();
+        clip.reverse = !clip.reverse;
+        e.currentTarget.textContent = clip.reverse ? '⏪ Reversed' : '⏩ Reverse';
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+      });
       $('#csDup', s).addEventListener('click', () => { this.closeSheet(); NB.Timeline.duplicateSelected(); });
       $('#csSplit', s).addEventListener('click', () => { this.closeSheet(); NB.Timeline.splitAtPlayhead(); });
       $('#csQuant', s).addEventListener('click', () => { this.closeSheet(); NB.Timeline.quantize(); });
@@ -561,6 +604,32 @@
       } catch (err) {
         console.error(err);
         toast('Export failed: ' + err.message, 'err', 4000);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = label;
+      }
+    },
+
+    async exportStems() {
+      const btn = $('#btnExport');
+      const label = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'Rendering…';
+      const t0 = performance.now();
+      try {
+        const stems = await NB.Wav.renderStems({
+          sampleLibrary: NB.Library.items,
+          project: NB.Project,
+          engine: NB.Engine,
+          fx: NB.Fx.snapshot(),
+        });
+        if (!stems.length) { toast('No clips to render', 'warn'); return; }
+        const zip = await NB.Wav.zip(stems.map((s) => ({ name: s.name, blob: s.blob })));
+        NB.Wav.download(zip, `${slug(NB.Project.name)}-stems.zip`);
+        toast(`${stems.length} stems in ${((performance.now() - t0) / 1000).toFixed(1)}s`, 'ok', 3200);
+      } catch (err) {
+        console.error(err);
+        toast('Stem export failed: ' + err.message, 'err', 4000);
       } finally {
         btn.disabled = false;
         btn.innerHTML = label;

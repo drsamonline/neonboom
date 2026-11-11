@@ -29,8 +29,12 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--mute-audio', '--use-gl=swiftshader'],
 });
 
+/* Every section gets its own browser context: same-origin IndexedDB would
+   otherwise leak one test's project into the next. */
 async function open(url, { w = 1440, h = 900, mobile = false } = {}) {
-  const page = await browser.newPage();
+  const context = await browser.createBrowserContext();
+  const page = await context.newPage();
+  page.__ctx = context;
   await page.setViewport({ width: w, height: h, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1 });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -40,7 +44,7 @@ async function open(url, { w = 1440, h = 900, mobile = false } = {}) {
   await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
   const bootMs = Date.now() - t0;
   await new Promise((r) => setTimeout(r, 500));
-  return { page, errors, bootMs };
+  return { page, errors, bootMs, context };
 }
 
 /* ---------------------------------------------------------------- 1. boot */
@@ -48,22 +52,33 @@ console.log('\n1 · boot & library');
 {
   const { page, errors, bootMs } = await open(APP);
   const o = await page.evaluate(() => ({
-    samples: window.NEONBOOM.Library.items.size,
+    samplesAtBoot: window.NEONBOOM.Library.items.size,
     tracks: window.NEONBOOM.Project.tracks.length,
     clips: window.NEONBOOM.Project.tracks.reduce((n, t) => n + t.clips.length, 0),
-    pads: document.querySelectorAll('.pad').length,
-    padWaves: document.querySelectorAll('.pad canvas').length,
-    veilGone: getComputedStyle(document.querySelector('#boot')).display === 'none',
+    timings: window.NEONBOOM.App.timings,
   }));
-  check('27 loops synthesised', o.samples === 27, o.samples);
+  const veilGone = await page.waitForFunction(
+    "getComputedStyle(document.querySelector('#boot')).display === 'none'",
+    { timeout: 8000 }).then(() => true).catch(() => false);
+  /* the priority slice must be ready before the veil lifts; the rest streams in */
+  check('priority loops ready at first paint', o.samplesAtBoot >= 14, o.samplesAtBoot);
   check('8 tracks', o.tracks === 8, o.tracks);
   check('demo arrangement loaded', o.clips > 20, o.clips);
-  check('one pad per loop', o.pads === 27, o.pads);
-  check('every pad has a waveform', o.padWaves === 27, o.padWaves);
-  check('boot veil removed', o.veilGone);
+
+  const full = await page.waitForFunction(
+    "window.NEONBOOM.Library.items.size === 27 && document.querySelectorAll('.pad').length === 27",
+    { timeout: 30000 }).then(() => true).catch(() => false);
+  check('all 27 loops arrive (background pass)', full);
+  const pads = await page.evaluate(() => ({
+    pads: document.querySelectorAll('.pad').length,
+    waves: document.querySelectorAll('.pad canvas').length,
+  }));
+  check('one pad per loop', pads.pads === 27, pads.pads);
+  check('every pad has a waveform', pads.waves === 27, pads.waves);
+  check('boot veil removed', veilGone);
   check('no console errors at boot', errors.length === 0, errors.slice(0, 3));
   console.log(`  boot ${bootMs} ms`);
-  await page.close();
+  await page.close(); await page.__ctx.close();
 }
 
 /* --------------------------------------------------- 2. transport & edit */
@@ -125,7 +140,7 @@ console.log('\n2 · transport, clips, undo');
   check('mute silences playing audio', o.muteLive);
   check('delete during playback re-schedules', o.deleteReschedules, { before: o.before2, after: o.after2 });
   check('no console errors', errors.length === 0, errors.slice(0, 3));
-  await page.close();
+  await page.close(); await page.__ctx.close();
 }
 
 /* ------------------------------------------------ 3. zoom / canvas limits */
@@ -151,7 +166,7 @@ console.log('\n3 · timeline rendering at zoom extremes');
   check('canvas is actually painted at 500%', o.drawn);
   check('fit zoom in range', o.fit);
   check('canvas painted at minimum zoom', o.minZoomDrawn);
-  await page.close();
+  await page.close(); await page.__ctx.close();
 }
 
 /* ------------------------------------------------------- 4. pads & record */
@@ -197,7 +212,7 @@ console.log('\n4 · pads, record-arm, mixer, fx');
   check('FX value reaches the audio graph', o.fxApplied && o.fxAudible);
   check('category filter narrows the pads', o.filtered);
   check('no console errors', errors.length === 0, errors.slice(0, 3));
-  await page.close();
+  await page.close(); await page.__ctx.close();
 }
 
 /* ------------------------------------------------------ 5. export & save */
@@ -246,7 +261,7 @@ console.log('\n5 · offline render, WAV, autosave restore');
   check('autosave restores clips after reload', after.clips > 20, after.clips);
   check('autosave restores project name', after.name === 'Test Beat', after.name);
   check('autosave restores tempo', after.bpm === 92, after.bpm);
-  await page.close();
+  await page.close(); await page.__ctx.close();
 }
 
 /* ------------------------------------------------------ 6. pointer / keyboard */
@@ -319,7 +334,7 @@ console.log('\n6 · mouse drag, trim, ruler loop, keyboard');
   await page.mouse.click(g3.x, g3.y, { button: 'right' });
   const sheet = await page.evaluate(() => document.querySelector('#sheet').classList.contains('on'));
   check('right-click opens the clip sheet', sheet);
-  await page.close();
+  await page.close(); await page.__ctx.close();
 }
 
 /* --------------------------------------------------------------- 7. phone */
@@ -359,10 +374,15 @@ console.log('\n7 · phone layout & touch');
   check('tap selects a clip', await page.evaluate((id) => window.NEONBOOM.Timeline.selectedClipId === id, pos.id));
 
   await page.touchscreen.touchStart(pos.x, pos.y);
-  await new Promise((r) => setTimeout(r, 1000));
-  await page.touchscreen.touchEnd();
+  await new Promise((r) => setTimeout(r, 1200));   // generous: the background
+  await page.touchscreen.touchEnd();               // loop pass can starve timers
   await new Promise((r) => setTimeout(r, 250));
   check('long-press opens the clip sheet', await page.evaluate(() => document.querySelector('#sheet').classList.contains('on')));
+  check('tapping the scrim closes it again', await (async () => {
+    await page.mouse.click(20, 120);                       // scrim area, above the sheet
+    await new Promise((r) => setTimeout(r, 250));
+    return page.evaluate(() => !document.querySelector('#sheet').classList.contains('on'));
+  })());
   await page.evaluate(() => window.NEONBOOM.Shell.closeSheet());
 
   await page.tap('#tabbar button[data-view="mixer"]');
@@ -386,7 +406,7 @@ console.log('\n7 · phone layout & touch');
   });
   check('no tap target under 30 px', targets === 0, targets);
   check('no console errors on phone', errors.length === 0, errors.slice(0, 3));
-  await page.close();
+  await page.close(); await page.__ctx.close();
 }
 
 /* -------------------------------------------------------------- 8. tablet */
@@ -399,22 +419,131 @@ console.log('\n8 · tablet layout');
   }));
   check('no horizontal overflow on tablet', !o.overflowX);
   check('tablet uses the tabbed layout', o.tabbar);
-  await page.close();
+  await page.close(); await page.__ctx.close();
 }
 
-/* ---------------------------------------------------------- 9. standalone */
-console.log('\n9 · standalone single-file build');
+/* ------------------------------------------- 9. pitch, reverse, fades, swing */
+console.log('\n9 · pitch, reverse, fades, swing, stems');
+{
+  const { page, errors } = await open(APP);
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, o = {};
+    const clip = NB.Project.tracks[0].clips[0];
+    const sample = NB.Library.get(clip.sampleId);
+
+    /* pitch is a playbackRate multiplier */
+    const base = NB.Schedule.rate({ pitch: 0 }, sample, 92);
+    o.rateOctave = NB.Schedule.rate({ pitch: 12 }, sample, 92) / base;
+    o.rateFifth = NB.Schedule.rate({ pitch: 7 }, sample, 92) / base;
+
+    /* reverse produces a real reversed copy, cached on the sample */
+    const rev = NB.project.reversedBuffer(sample);
+    const a = sample.buffer.getChannelData(0), b = rev.getChannelData(0);
+    o.reversed = Math.abs(a[a.length - 1] - b[0]) < 1e-6 && Math.abs(a[0] - b[b.length - 1]) < 1e-6;
+    o.reverseCached = NB.project.reversedBuffer(sample) === rev;
+
+    /* swing delays odd sixteenths only */
+    o.swingEven = NB.Schedule.swingOffsetSix({ startSix: 4 }, 0.4);
+    o.swingOdd = NB.Schedule.swingOffsetSix({ startSix: 5 }, 0.4);
+
+    /* a fade in really attenuates the head of the clip.
+       Solo the kick track: the demo's snare sits on the same downbeat and
+       would mask the difference otherwise. */
+    NB.Project.tracks.forEach((t, i) => { t.mute = i !== 0; });
+    const render = async (fade) => {
+      clip.fadeIn = fade;
+      const { rendered } = await NB.Wav.renderArrangement({
+        sampleLibrary: NB.Library.items, project: NB.Project, engine: NB.Engine, fx: NB.Fx.snapshot(),
+      });
+      const ch = rendered.getChannelData(0);
+      const sr = rendered.sampleRate;
+      let head = 0, body = 0;
+      for (let i = 0; i < sr * 0.08; i++) head = Math.max(head, Math.abs(ch[i]));
+      for (let i = Math.floor(sr * 0.25); i < Math.floor(sr * 0.6); i++) body = Math.max(body, Math.abs(ch[i]));
+      return { head, body };
+    };
+    const plain = await render(0);
+    const faded = await render(6);
+    clip.fadeIn = 0;
+    NB.Project.tracks.forEach((t) => { t.mute = false; });
+    o.fadeHeadPlain = plain.head; o.fadeHeadFaded = faded.head;
+
+    /* stems: one WAV per track, zipped with a real PK header */
+    const stems = await NB.Wav.renderStems({
+      sampleLibrary: NB.Library.items, project: NB.Project, engine: NB.Engine, fx: NB.Fx.snapshot(),
+    });
+    o.stemCount = stems.length;
+    const zip = await NB.Wav.zip(stems.map((x) => ({ name: x.name, blob: x.blob })));
+    const head = new Uint8Array(await zip.slice(0, 4).arrayBuffer());
+    o.zipMagic = String.fromCharCode(...head);
+    o.zipBytes = zip.size;
+    o.stemNames = stems.map((x) => x.name).slice(0, 3);
+    return o;
+  });
+  check('pitch +12 doubles the rate', Math.abs(o.rateOctave - 2) < 0.001, o.rateOctave);
+  check('pitch +7 is a fifth', Math.abs(o.rateFifth - 1.4983) < 0.01, o.rateFifth);
+  check('reverse buffer is reversed', o.reversed);
+  check('reverse buffer is cached', o.reverseCached);
+  check('swing leaves even sixteenths alone', o.swingEven === 0);
+  check('swing delays odd sixteenths', o.swingOdd > 0.15, o.swingOdd);
+  check('fade-in attenuates the clip head', o.fadeHeadFaded < o.fadeHeadPlain * 0.6,
+    { plain: o.fadeHeadPlain, faded: o.fadeHeadFaded });
+  check('one stem per track with clips', o.stemCount === 8, o.stemCount);
+  check('zip has a PK header', o.zipMagic === 'PK\u0003\u0004', o.zipMagic);
+  check('zip is non-trivial', o.zipBytes > 500000, o.zipBytes);
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await page.__ctx.close();
+}
+
+/* ------------------------------------------------ 10. loop cache (warm boot) */
+console.log('\n10 · loop cache');
+{
+  const { page } = await open(APP);
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 1200));
+  const rows = await page.evaluate(async () => {
+    const db = window.NEONBOOM.Persistence.db;
+    if (!db) return { count: 0 };
+    return new Promise((res) => {
+      const tx = db.transaction('loops', 'readonly');
+      const rq = tx.objectStore('loops').getAll();
+      rq.onsuccess = () => {
+        const r = rq.result || [];
+        res({ count: r.length, mono: r.filter((x) => x.channels === 1).length,
+          bytes: r.reduce((n, x) => n + x.data.length * 2, 0) });
+      };
+      rq.onerror = () => res({ count: 0 });
+    });
+  });
+  check('every loop is cached', rows.count === 27, rows.count);
+  check('loops are cached as mono when the channels match', rows.mono > 20, rows.mono);
+  check('cache is a sensible size (< 12 MB)', rows.bytes > 1000000 && rows.bytes < 12 * 1024 * 1024, rows.bytes);
+
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
+  const t = await page.evaluate(() => window.NEONBOOM.App.timings);
+  check('warm boot hydrates from cache', t.hydrated >= 14, t.hydrated);
+  check('warm boot renders nothing on the critical path', t.phase1 === 0, t.phase1);
+  check('warm boot is faster than cold', t.storage < 1500, t.storage);
+  await page.close(); await page.__ctx.close();
+}
+
+/* ---------------------------------------------------------- 11. standalone */
+console.log('\n11 · standalone single-file build');
 {
   if (!fs.existsSync(path.join(ROOT, 'dist', 'neonboom.html'))) {
     check('dist/neonboom.html exists (run npm run build)', false);
   } else {
-    const page = await browser.newPage();
+    const context = await browser.createBrowserContext();
+    const page = await context.newPage();
     await page.setViewport({ width: 1280, height: 800 });
     const errors = [], failed = [];
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('requestfailed', (r) => failed.push(r.url()));
     await page.goto(STANDALONE, { waitUntil: 'load' });
     await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
+    await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
     const o = await page.evaluate(() => ({
       samples: window.NEONBOOM.Library.items.size,
       pads: document.querySelectorAll('.pad').length,
@@ -424,6 +553,7 @@ console.log('\n9 · standalone single-file build');
     check('standalone build makes no failed requests', failed.length === 0, failed.slice(0, 3));
     check('standalone build has no console errors', errors.length === 0, errors.slice(0, 3));
     await page.close();
+    await context.close();
   }
 }
 

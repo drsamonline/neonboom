@@ -13,9 +13,10 @@ dependency or a second code path to maintain.
 
 ## 0. Where it stands now (measured, not guessed)
 
-| Metric | Current |
+| Metric | Current (1.2.0) |
 |---|---|
-| Boot (27 offline renders) | ≈ 3.5–4.7 s on a headless container, ≈ 1.5–2.5 s on a normal laptop |
+| Boot, cold (27 offline renders) | ≈ 3.7 s headless · ≈ 1.5–2 s on a normal laptop |
+| Boot, warm (loop cache) | ≈ 1.6 s headless · under a second on a normal laptop |
 | Timeline full repaint | 2.6 ms/frame |
 | Playhead overlay | 0.01 ms/frame |
 | Idle memory | ~40 MB (27 AudioBuffers, ~2 s each) |
@@ -33,8 +34,8 @@ the main thread's audio renderer.
 
 | # | Idea | Effort | Bloat | Gain |
 |---|---|---|---|---|
-| 1 | **Persist rendered loops in Cache Storage / IndexedDB as 16-bit PCM** and re-hydrate on the next visit. Render only on first run. | M | low | 2nd visit ≈ instant |
-| 2 | **Lazy-render the library**: render the 8 drum loops the pads show first, then the rest in the background after the veil lifts. | S | low | first paint ~1 s sooner |
+| 1 | ~~Persist rendered loops as 16-bit PCM and re-hydrate~~ — **shipped in 1.2.0** (`NB.LoopCache`) | — | — | warm boot 4.7 s → 1.6 s |
+| 2 | ~~Lazy-render the library: priority slice first, rest in the background~~ — **shipped in 1.2.0** | — | — | first paint ~1 s sooner |
 | 3 | **Ship a pre-rendered loop pack** (one `.json` of base64 PCM, or a `.wav` per loop) built by `npm run build:loops`, fetched only if present, with procedural synthesis as the fallback. | M | med | boot ≈ 0.3 s, at the cost of ~2 MB of assets |
 | 4 | Render at 32 kHz instead of 44.1 kHz for the drum loops (they lose nothing above 16 kHz). | S | low | ~25 % less render time and memory |
 | 5 | Skip peaks computation for loops longer than N seconds and compute lazily on first draw. | S | low | minor |
@@ -83,10 +84,10 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 
 | # | Feature | Effort | Bloat | Why it matters |
 |---|---|---|---|---|
-| 22 | **Per-clip pitch (semitones) and reverse** | M | low | turns 27 loops into a much bigger palette; reverse is 3 lines plus a reversed buffer cache |
+| 22 | ~~Per-clip pitch and reverse~~ — **shipped in 1.2.0** | — | — | — |
 | 23 | **Automation lanes** for volume/pan/FX (draw a line, hear it) | L | med | the difference between a loop player and a DAW |
-| 24 | **Stem export** (one WAV per track, zipped) | S | low | what people actually need to finish a track elsewhere |
-| 25 | **Clip fades** (2–4 handle drags, equal-power) | S | low | removes clicks, makes layering usable |
+| 24 | ~~Stem export~~ — **shipped in 1.2.0** (`NB.Wav.renderStems` + `NB.Wav.zip`) | — | — | — |
+| 25 | ~~Clip fades~~ — **shipped in 1.2.0** (drawn wedges + gain envelope) | — | — | equal-power curves still to do |
 | 26 | **MIDI-in** (Web MIDI): pads on notes, knobs on CC | M | low | makes it playable with hardware |
 | 27 | **Tap tempo + tempo automation-free half/double** | S | low | the most-requested small thing |
 | 28 | **Scene / pattern launcher** (Ableton-style clip rows) | L | med | a different workflow; keep it optional behind a tab |
@@ -94,10 +95,11 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 30 | **Per-track FX send amounts** (delay/reverb) | S | low | the sends already exist in the graph — just expose them |
 | 31 | **Undo history panel** with named steps | S | low | 80 snapshots already exist, they are just invisible |
 | 32 | **Project templates** (boom-bap, trap, house) built from the same demo generator | S | low | faster start than an empty grid |
-| 33 | **Quantise on record** (already), plus **swing** | S | low | one number, big feel change |
+| 33 | ~~Swing~~ — **shipped in 1.2.0** (0–60 %, playback + export) | — | — | — |
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
-Take 22, 24, 25, 30, 33 first: they are all small diffs on code that already exists.
+22, 24, 25 and 33 are done. The next cheapest wins from this table are **30** (per-track send
+amounts — the sends already exist), **31** (undo history panel) and **32** (templates).
 
 ---
 
@@ -152,8 +154,8 @@ These come up often. They are listed so the decision is visible rather than re-l
 
 ## 7. Suggested order of work
 
-1. **Cache rendered loops** (1) + **lazy render** (2) — the only real wait disappears.
-2. **Per-clip pitch/reverse** (22), **stem export** (24), **clip fades** (25), **swing** (33).
+1. ~~Cache rendered loops (1) + lazy render (2)~~ — **done in 1.2.0**.
+2. ~~Per-clip pitch/reverse (22), stem export (24), clip fades (25), swing (33)~~ — **done in 1.2.0**.
 3. **Look-ahead scheduler** (6) — unlocks tempo changes and gapless loops.
 4. **AudioWorklet bitcrusher** (8) — removes the last deprecation warning.
 5. **Automation lanes** (23) and **MIDI-in** (26) — the two features that change the ceiling.

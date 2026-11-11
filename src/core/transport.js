@@ -96,26 +96,13 @@
       P.tracks.forEach((track, ti) => {
         if (track.mute || (anySolo && !track.solo)) return;
         track.clips.forEach((clip) => {
-          const end = clip.startSix + (clip.trimEndSix - clip.trimStartSix);
-          if (end <= fromSix) return;
           const sample = NB.Library.get(clip.sampleId);
           if (!sample) return;
-          const skip = Math.max(0, fromSix - clip.startSix);
-          const when = ctxStartTime + Grid.sixToSec(Math.max(0, clip.startSix - fromSix), bpm);
-          const rate = bpm / sample.refBpm;
-          const bufOffsetSec = ((clip.trimStartSix + skip) / 4) * (60 / sample.refBpm);
-          const durSec = ((clip.trimEndSix - clip.trimStartSix - skip) / 4) * (60 / sample.refBpm);
-          if (durSec <= 0) return;
-
-          const src = E.ctx.createBufferSource();
-          src.buffer = sample.buffer;
-          src.playbackRate.value = rate;
-          const g = E.ctx.createGain();
-          g.gain.value = clip.gain == null ? 1 : clip.gain;
-          src.connect(g); g.connect(E.tracks[ti].gain);
-          try { src.start(when, bufOffsetSec, durSec); } catch (e) { return; }
-          src._gainNode = g;
-          E._activeSources.push(src);
+          const src = NB.Schedule.clip(E.ctx, E.tracks[ti].gain, clip, sample, {
+            when: NB.Schedule.when(clip, fromSix, ctxStartTime, bpm, P.swing),
+            fromSix, bpm, swing: P.swing,
+          });
+          if (src) E._activeSources.push(src);
         });
       });
 

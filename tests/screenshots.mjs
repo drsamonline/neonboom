@@ -47,7 +47,10 @@ await shot('pads-fx', 1440, 900, false, () => {
 /* 3. desktop, inspector focus on a clip + export pane */
 await shot('inspector', 1280, 800, false, () => {
   const NB = window.NEONBOOM;
-  NB.Timeline.select(NB.Project.tracks[2].clips[0].id);
+  const clip = NB.Project.tracks[4].clips[0];
+  clip.pitch = 3; clip.fadeIn = 4; clip.fadeOut = 6;      // show the sound panel
+  NB.Project.swing = 0.18;
+  NB.Timeline.select(clip.id);
   NB.Timeline.zoom = 1.1;
   NB.Timeline.resize();
   NB.Timeline.viewport.scrollLeft = 0;

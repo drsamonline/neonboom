@@ -139,7 +139,7 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-con
 
 <header class="hero">
   <div class="wrap">
-    <div class="eyebrow">v1.1.1 · offline-first · zero dependencies</div>
+    <div class="eyebrow">v1.2.0 · offline-first · zero dependencies</div>
     <h1>Make a beat<br>in your browser tab.</h1>
     <p class="lead">NEONBOOM is a small, fast beat workstation. Twenty-seven loops are synthesised on your device the moment it opens, so there is nothing to download, no account to make and nothing to upload. Pads, a canvas arrangement, a mixer, a master FX rack and WAV export — all in one page.</p>
     <div class="ctas">
@@ -148,7 +148,7 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-con
       <a class="btn" href="https://github.com/drsamonline/neonboom">★ Star on GitHub</a>
     </div>
     <div class="badges">
-      <span class="badge"><b>190 KB</b> single file</span>
+      <span class="badge"><b>216 KB</b> single file</span>
       <span class="badge"><b>27</b> synthesised loops</span>
       <span class="badge"><b>0</b> network requests at runtime</span>
       <span class="badge"><b>PolyForm</b> Noncommercial 1.0.0</span>
@@ -221,6 +221,18 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center;justify-con
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1018 0 9 9 0 00-18 0z"/><path d="M12 8v4l3 2"/></svg></div>
         <h3>Autosave, undo and redo</h3>
         <p>Every edit is snapshotted into an 80-step undo history, and the whole project autosaves to IndexedDB 650 ms after you stop touching it.</p>
+      </div>
+
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/></svg></div>
+        <h3>Rendered once, then instant</h3>
+        <p>The 27 loops are cached in IndexedDB as 16-bit mono. A cold start synthesises them; every start after that is a memory copy — about 1.6 s instead of 4.7 s, with half the library ready before the loading veil lifts.</p>
+      </div>
+
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18V6l7 6-7 6zM13 18V6l7 6-7 6z"/></svg></div>
+        <h3>Pitch, reverse, fades, swing, stems</h3>
+        <p>Flip a clip's pitch by up to an octave, play it backwards, shape fade in/out envelopes, push the whole groove with swing — then bounce one WAV per track as a zip.</p>
       </div>
 
     </div>
@@ -323,10 +335,10 @@ npm install &amp;&amp; npx cap add android &amp;&amp; npx cap sync</code></pre>
         <ul class="ticks">
           <li>AudioWorklet bitcrusher (replaces the deprecated ScriptProcessorNode)</li>
           <li>MIDI-in for pads and knobs</li>
-          <li>Per-clip pitch and reverse</li>
           <li>Automation lanes for volume and pan</li>
-          <li>Stem export (one WAV per track)</li>
+          <li>Sample editor: trim, normalise, crop to selection</li>
           <li>Project share links with compressed state in the URL</li>
+          <li>Per-track delay/reverb send amounts</li>
         </ul>
       </div>
       <div>
@@ -383,7 +395,7 @@ npm install &amp;&amp; npx cap add android &amp;&amp; npx cap sync</code></pre>
         <div style="font-size:12px">Built and maintained by one person · <a href="mailto:sohilmomin2000@gmail.com">sohilmomin2000@gmail.com</a> · <a href="https://github.com/drsamonline">github.com/drsamonline</a></div>
       </div>
     </div>
-    <div style="font-family:var(--mono);font-size:11px">NEONBOOM 1.1.1 · PolyForm Noncommercial 1.0.0 · no cookies, no tracking</div>
+    <div style="font-family:var(--mono);font-size:11px">NEONBOOM 1.2.0 · PolyForm Noncommercial 1.0.0 · no cookies, no tracking</div>
   </div>
 </footer>
 

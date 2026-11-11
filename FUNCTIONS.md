@@ -39,6 +39,15 @@ Legend: ✅ implemented and tested · 🔎 implemented, verified manually · ⚠
 | `click(when, accent)` | Metronome voice | 🔎 |
 | `ImpulseResponse.generate(ctx, sec, decay)` | Synthetic convolution reverb IR | ✅ |
 
+## 2b. Shared scheduler — `src/audio/schedule.js`
+
+| Function | What it does | Status |
+|---|---|---|
+| `Schedule.rate(clip, sample, bpm)` | playbackRate from tempo and pitch | ✅ |
+| `Schedule.swingOffsetSix(clip, swing)` | delays odd sixteenths only | ✅ |
+| `Schedule.when(clip, fromSix, start, bpm, swing)` | context time for a clip | ✅ |
+| `Schedule.clip(ctx, dest, clip, sample, opts)` | builds the source + gain envelope (gain, fade in/out, reverse offset) and starts it; used by playback **and** export | ✅ |
+
 ## 3. Synthesis — `src/audio/synth.js`
 
 27 generators, each rendering an `AudioBuffer` offline at 90 BPM and declaring its musical
@@ -62,7 +71,10 @@ Voices: `kickHit`, `snareHit`, `clapHit`, `hatHit`, `crashHit`, `bass808`, `stab
 | `newClip/clipEnd/findClip/removeClip` | Clip helpers | ✅ |
 | `History.push/commit/undo/redo` | 80-step snapshot undo/redo with lazy commit so a drag that never moved does not pollute history | ✅ |
 | `Persistence.open/save/saveSoon/load/clear` | IndexedDB autosave of project + imported sample bytes, with id remapping on restore | ✅ |
-| `projectFile()` / `loadProjectFile()` | Portable `.neonboom.json` save/open | 🔎 |
+| `projectFile()` / `loadProjectFile()` | Portable `.neonboom.json` save/open (pitch, reverse, fades and swing included) | 🔎 |
+| `LoopCache.many/all/put/hydrate` | 16-bit PCM loop cache in IndexedDB, mono when channels match | ✅ |
+| `normaliseClip(clip)` | fills in optional clip fields on load | ✅ |
+| `reversedBuffer(sample)` | cached reversed copy for reverse playback | ✅ |
 | `buildDemo()` | The 8-bar demo arrangement | ✅ |
 
 ## 5. Timeline — `src/ui/timeline.js`
@@ -120,6 +132,9 @@ pan, clear clips, delete track). ✅
 | Import | File picker + drag-and-drop anywhere; decode, register, persist bytes | 🔎 |
 | Project files | Save/open `.neonboom.json` | 🔎 |
 | Export | Full arrangement or loop region → 16-bit WAV with FX-matched offline render | ✅ |
+| Stems | One WAV per track, zipped by `NB.Wav.zip` (store method, CRC32, no dependency) | ✅ |
+| Clip sound | Pitch ±12 st, reverse, fade in/out, gain — live and offline | ✅ |
+| Swing | Project-wide 0–60 %, in the inspector and the More sheet | ✅ |
 | Install | `beforeinstallprompt` capture + service worker registration on http(s) | 🔎 |
 | Toasts | Non-blocking feedback instead of `alert`/`prompt` | ✅ |
 
@@ -138,5 +153,6 @@ on first run → reveal. ✅
 | 2 | No per-clip pitch or reverse | Would need a second playback path and a peak re-render | Roadmap |
 | 3 | Clip gain is applied at schedule time, not as a live node | Keeps the graph small | Add a per-clip gain node if automation lands |
 | 4 | Tempo changes restart playback | Simple, glitch-free rescheduling | Look-ahead scheduler (roadmap) |
+| 7 | Pitch is sampler-style (changes speed) | Matches the mental model of a sampler and needs no time-stretch | WSOLA time-stretch (roadmap) |
 | 5 | No pinch-to-zoom on the timeline | Native panning is more valuable on touch than a gesture that fights it | Optional: two-finger zoom in edit mode |
 | 6 | Imported samples are assumed to match the project tempo | No beat detection | Tempo field per sample + optional onset estimate |

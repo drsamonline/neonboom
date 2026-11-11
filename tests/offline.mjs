@@ -76,6 +76,9 @@ try {
     { timeout: 120000 }).then(() => true).catch(() => false);
   check('app boots with the network off', booted);
 
+  /* the library fills in two phases, so wait for the background pass */
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27 && document.querySelectorAll('.pad').length === 27",
+    { timeout: 30000 }).catch(() => {});
   const state = await page.evaluate(() => ({
     samples: window.NEONBOOM.Library.items.size,
     pads: document.querySelectorAll('.pad').length,

@@ -11,11 +11,11 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.1-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.0-ffb020)](CHANGELOG.md)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
-[![Tests](https://img.shields.io/badge/headless_tests-66_assertions_passing-41d18a)](#testing)
+[![Tests](https://img.shields.io/badge/headless_tests-85_assertions_passing-41d18a)](#testing)
 [![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
 [![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
@@ -35,11 +35,13 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 
 | | |
 |---|---|
+| ⚡ **Fast** | Loops are rendered once and cached in IndexedDB as 16-bit mono, so a warm start is a memory copy: **~4.7 s cold → ~1.6 s warm**, with the priority half ready before the veil lifts. |
 | 🎛 **Pads** | 27 synthesised loops as waveform tiles. Tap to audition, arm REC to drop one at the playhead, or drag a pad onto the timeline. |
 | 🎚 **Arrangement** | Canvas timeline: drag to move, drag edges to trim, alt-drag to duplicate, split, nudge, quantise, snap 1/16 – 1/4 bar, loop region with draggable handles. |
 | 🎹 **Mixer** | Fader, pan, mute, solo and a live level meter on every strip, plus a master meter. |
 | 🎛 **FX rack** | 3-band EQ · tempo-synced delay · convolution reverb · bitcrusher · limiter. |
-| 💾 **Export** | 16-bit WAV of the arrangement or just the loop region, rendered through the same graph you are hearing. |
+| 💾 **Export** | 16-bit WAV of the arrangement or just the loop region, or **stems** — one WAV per track, zipped with a dependency-free ZIP writer. |
+| 🎚 **Clip sound** | Per-clip **pitch (±12 st)**, **reverse**, **fade in / out** envelopes, gain, and project **swing** — all honoured by playback *and* export. |
 | 🔌 **Offline** | Service worker + installable PWA, plus a **single 190 KB HTML file** that runs from `file://` with zero requests. |
 | 📱 **Responsive** | Three separately designed layouts: desktop (3 columns), tablet (2), phone (tab bar + bottom sheets, 40 px targets, long-press actions). |
 | ↩️ **Safe** | 80-step undo/redo, autosave to IndexedDB every 650 ms, project files you can save and reopen. |
@@ -123,10 +125,11 @@ assets/css/tokens.css      design tokens (colour, type, geometry)
 assets/css/app.css         layout + components + responsive rules
 assets/img/                icons
 src/core/util.js           helpers, musical grid math, toasts
-src/core/project.js        sample registry, project state, undo/redo, IndexedDB, project files, demo beat
+src/core/project.js        sample registry, project state, undo/redo, IndexedDB, loop cache, project files, demo beat
 src/core/transport.js      playback clock, clip scheduling, loop, metronome, live refresh
 src/audio/synth.js         procedural loop synthesis (27 generators)
 src/audio/engine.js        AudioContext, master FX chain, track buses, meters, click, preview
+src/audio/schedule.js      clip → scheduled node (pitch, reverse, fades, swing) shared by live + export
 src/audio/wav.js           16-bit WAV encoder + offline render
 src/ui/timeline.js         canvas arrangement: rendering, pointer/touch editing, zoom
 src/ui/pads.js             pad grid
@@ -164,12 +167,12 @@ node scripts/build-standalone.mjs
 The repo is checked with a headless Chromium harness that boots the app and exercises the public surface — transport, clip edits, undo/redo, zoom extremes, pads, recording, mixer, FX, offline render, autosave restore, touch gestures and layout at three viewport sizes.
 
 ```bash
-npm test                       # 66 assertions: functional, interaction, touch, responsive, standalone
+npm test                       # 85 assertions: functional, interaction, touch, responsive, pitch/fade/stems, cache, standalone
 npm run test:offline           # serves over http, kills the network, reloads — proves the offline claim
 npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **66 assertions + 6 offline assertions, 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.5 s for 27 offline renders.
+Latest run: **85 assertions + 6 offline assertions, 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
 
 ---
 
@@ -195,8 +198,8 @@ npx cap add android && npx cap sync && npx cap open android
 See [ENHANCEMENTS.md](ENHANCEMENTS.md) for the full, costed list. The short version:
 
 - AudioWorklet bitcrusher (the `ScriptProcessorNode` fallback is deprecated, though still universally supported)
-- MIDI-in for pads and knobs · per-clip pitch/reverse · automation lanes
-- Stem export · share links with compressed project state in the URL
+- MIDI-in for pads and knobs · automation lanes
+- Share links with compressed project state in the URL · sample editor (trim/normalise)
 - Sample-accurate look-ahead scheduling for dense arrangements
 
 ---

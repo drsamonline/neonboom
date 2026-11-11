@@ -5,6 +5,41 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.0] — 2026-11-11
+
+The speed-and-groove release: it takes the top of the 1.1 roadmap.
+
+### Added
+- **Loop cache.** The 27 procedural loops are rendered once, stored in IndexedDB as 16-bit
+  PCM (mono when both channels match, which they do), and re-hydrated on the next visit.
+  A warm start is a memory copy. Measured in the headless harness: **4.7 s → 1.6 s**.
+- **Phased boot.** Only the loops the demo and the first screenful of pads need are waited for;
+  the rest stream in after the veil lifts and the pad grid fills itself in.
+- **Per-clip pitch** (±12 semitones, sampler-style: it changes speed with the pitch).
+- **Per-clip reverse**, with a reversed buffer cached per sample.
+- **Per-clip fade in / fade out** envelopes, drawn as wedges on the clip and applied in the
+  audio graph — so the export matches.
+- **Swing** (0–60 %) that delays every second sixteenth, applied to playback *and* export.
+- **Stem export**: one WAV per track through the same master chain, bundled into a zip by a
+  dependency-free store-only ZIP writer (`NB.Wav.zip`).
+- A shared scheduler (`src/audio/schedule.js`) that both live playback and the offline render
+  call, so the two can no longer drift apart.
+
+### Changed
+- Boot now opens storage *before* synthesising, because the cache is the reason not to synthesise.
+- `Persistence.load()` skips the sample store entirely when the project has no imports.
+- Long-press on a clip is now driven by elapsed time as well as a timer, so a starved timer on a
+  busy device still opens the sheet.
+- Sheets dismiss on `pointerdown` rather than `click`: a long-press opens the sheet while the
+  finger is still down, and the compatibility click used to close it instantly.
+
+### Fixed
+- Flaky long-press dismissal on touch.
+- Test suite shared one browser profile across sections, so one section's autosaved project leaked
+  into the next; each section now gets its own browser context.
+
+---
+
 ## [1.1.1] — 2026-11-11
 
 ### Fixed

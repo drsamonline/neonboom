@@ -62,6 +62,50 @@
       gIn.addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
       this.host.appendChild(gainCard);
 
+      /* sound: pitch, reverse, fades */
+      const sound = el('div', { class: 'insp-card' });
+      const pitch = clip.pitch || 0;
+      sound.innerHTML = `<h4>Sound</h4>
+        <div class="knobRow"><label>Pitch</label>
+          <input type="range" min="-12" max="12" step="1" value="${pitch}" data-k="pitch">
+          <span class="val">${pitch > 0 ? '+' : ''}${pitch} st</span></div>
+        <div class="knobRow"><label>Fade in</label>
+          <input type="range" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeIn || 0}" data-k="fadeIn">
+          <span class="val">${clip.fadeIn || 0}/16</span></div>
+        <div class="knobRow"><label>Fade out</label>
+          <input type="range" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeOut || 0}" data-k="fadeOut">
+          <span class="val">${clip.fadeOut || 0}/16</span></div>
+        <div class="grid2" style="margin-top:4px">
+          <button class="btn ${clip.reverse ? 'on' : ''}" id="clipReverse">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
+          <button class="btn" id="clipReset">Reset</button>
+        </div>
+        <p style="font-size:10.5px;color:var(--ink-2);margin:8px 0 0">Pitch is sampler-style: it changes speed with the pitch, like a turntable.</p>`;
+      const fmtPitch = (v) => (v > 0 ? '+' : '') + v + ' st';
+      sound.querySelectorAll('input[data-k]').forEach((inp) => {
+        const k = inp.dataset.k;
+        const out = inp.parentElement.querySelector('.val');
+        inp.addEventListener('input', () => {
+          clip[k] = k === 'pitch' ? parseInt(inp.value, 10) : parseInt(inp.value, 10);
+          out.textContent = k === 'pitch' ? fmtPitch(clip[k]) : `${clip[k]}/16`;
+          NB.Timeline.draw();
+        });
+        inp.addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      });
+      sound.querySelector('#clipReverse').addEventListener('click', (e) => {
+        NB.History.push();
+        clip.reverse = !clip.reverse;
+        e.currentTarget.classList.toggle('on', clip.reverse);
+        e.currentTarget.textContent = clip.reverse ? '⏪ Reversed' : '⏩ Reverse';
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+      });
+      sound.querySelector('#clipReset').addEventListener('click', () => {
+        NB.History.push();
+        clip.pitch = 0; clip.reverse = false; clip.fadeIn = 0; clip.fadeOut = 0; clip.gain = 1;
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+        this.render();
+      });
+      this.host.appendChild(sound);
+
       /* actions */
       const act = el('div', { class: 'insp-card' });
       act.innerHTML = '<h4>Actions</h4><div class="grid2" id="clipActions"></div>';
@@ -99,7 +143,20 @@
         <div class="statRow"><span>Clips</span><b>${clips}</b></div>
         <div class="statRow"><span>Tempo</span><b>${P.bpm} BPM</b></div>
         <div class="statRow"><span>Loop</span><b>${P.loopEnabled ? Grid.fmtBBT(P.loopIn) + ' → ' + Grid.fmtBBT(P.loopOut) : 'off'}</b></div>
+        <div class="knobRow" style="margin-top:8px"><label>Swing</label>
+          <input type="range" min="0" max="0.6" step="0.02" value="${P.swing || 0}" id="projSwing">
+          <span class="val">${Math.round((P.swing || 0) * 100)}%</span></div>
         <div class="grid2" style="margin-top:10px" id="projBtns"></div>`;
+      const swingIn = card.querySelector('#projSwing');
+      const swingOut = swingIn && swingIn.nextElementSibling;
+      if (swingIn) {
+        swingIn.addEventListener('input', () => {
+          P.swing = parseFloat(swingIn.value);
+          swingOut.textContent = Math.round(P.swing * 100) + '%';
+        });
+        swingIn.addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      }
+
       const box = card.querySelector('#projBtns');
       const mk = (label, fn, cls = '') => {
         const b = el('button', { class: 'btn ' + cls, text: label });

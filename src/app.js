@@ -40,7 +40,7 @@
   ];
 
   const App = {
-    version: '1.1.1',
+    version: '1.2.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');
@@ -49,34 +49,96 @@
         if (text) msg.textContent = text;
       };
 
+      const T = { start: performance.now() };
+      const mark = (k) => { T[k] = Math.round(performance.now() - T.start); };
+      let hydrated = 0;
       set(4, 'starting audio engine…');
       NB.Engine = new NB.AudioEngine();
       const E = NB.Engine;
 
-      /* ---------- synthesise the library, four renders at a time ---------- */
-      set(8, 'synthesising loop library…');
-      const total = LOOP_MANIFEST.length;
-      let done = 0;
-      const queue = LOOP_MANIFEST.slice();
-      const workers = Array.from({ length: 6 }, async () => {
-        while (queue.length) {
-          const [name, category, fn] = queue.shift();
+      mark('engine');
+
+      /* ---------- which loops matter first ----------
+         The demo beat and the first screenful of pads only need these. They are
+         hydrated from cache (or synthesised) before the veil lifts; everything
+         else arrives in the background. */
+      const PRIORITY = new Set(['boomBapKick', 'boomBapSnareClap', 'hatRoll', 'bassline808',
+        'stabLoop', 'arpPluckLoop', 'vinylCrackle', 'crashOneShot',
+        'scratchOneShot', 'trapKickPattern', 'fourOnFloorKick', 'trapSnareGhosts',
+        'rimshotPattern', 'trapHatRolls']);
+
+      const idOf = (fn) => 'loop_' + fn;
+      const register = (name, category, fn, i, buffer, beats) => {
+        NB.Library.register({
+          id: idOf(fn), name, buffer, category,
+          color: NB.util.TRACK_COLORS[i % NB.util.TRACK_COLORS.length],
+          beats,
+        });
+      };
+      const hydrateRows = (rows) => {
+        let n = 0;
+        LOOP_MANIFEST.forEach(([name, category, fn], i) => {
+          if (NB.Library.has(idOf(fn))) return;
+          const row = rows.get(NB.LoopCache.key(idOf(fn)));
+          if (!row) return;
           try {
-            const { buffer, beats } = await NB.Synth[fn].call(NB.Synth);
-            NB.Library.register({
-              id: 'loop_' + fn,
-              name, buffer, category,
-              color: NB.util.TRACK_COLORS[done % NB.util.TRACK_COLORS.length],
-              beats,
-            });
-          } catch (err) {
-            console.error('loop failed:', name, err);
-          }
-          done++;
-          set(8 + (done / total) * 74, `synthesised ${done}/${total} · ${name}`);
+            register(name, category, fn, i, NB.LoopCache.hydrate(row, E.ctx), row.beats);
+            n++;
+          } catch (err) { /* corrupt row: it will be re-synthesised */ }
+        });
+        return n;
+      };
+
+      const renderOne = async ([name, category, fn], i) => {
+        if (NB.Library.has(idOf(fn))) return;
+        try {
+          const { buffer, beats } = await NB.Synth[fn].call(NB.Synth);
+          register(name, category, fn, i, buffer, beats);
+          NB.LoopCache.put(idOf(fn), buffer, beats);   // fire and forget
+        } catch (err) {
+          console.error('loop failed:', name, err);
         }
-      });
-      await Promise.all(workers);
+      };
+
+      const runQueue = async (queue, workers) => {
+        const q = queue.slice();
+        await Promise.all(Array.from({ length: workers }, async () => {
+          while (q.length) {
+            const [entry, i] = q.shift();
+            await renderOne(entry, i);
+            done++;
+            set(12 + (done / Math.max(1, totalPending)) * 72, `synthesising ${entry[0]}…`);
+          }
+        }));
+      };
+
+      const allEntries = LOOP_MANIFEST.map((entry, i) => [entry, i]);
+      let done = 0;
+      let totalPending = 0;
+
+      /* ---------- storage, then the priority slice ---------- */
+      set(8, 'restoring rendered loops…');
+      try {
+        await NB.Persistence.open();
+        const priorityNames = LOOP_MANIFEST
+          .filter(([, , fn]) => PRIORITY.has(fn))
+          .map(([, , fn]) => idOf(fn));
+        const rows = await NB.LoopCache.many(priorityNames);
+        hydrated = hydrateRows(rows);
+      } catch (err) {
+        console.warn('storage unavailable — loops will render every boot', err);
+      }
+      mark('storage');
+
+      const phase1 = allEntries.filter(([e]) => PRIORITY.has(e[2]) && !NB.Library.has(idOf(e[2])));
+      const phase2 = allEntries.filter(([e]) => !PRIORITY.has(e[2]) && !NB.Library.has(idOf(e[2])));
+      totalPending = phase1.length + phase2.length;
+
+      if (hydrated) set(12, `${hydrated} loops restored from cache`);
+      await runQueue(phase1, 6);
+      mark('phase1');
+      Object.assign(T, { hydrated, phase1: phase1.length, phase2: phase2.length });
+      App.timings = T;   // live reference: later marks keep landing in it
 
       /* ---------- project + UI ---------- */
       set(86, 'building the workspace…');
@@ -89,12 +151,12 @@
       NB.Fx.mount(document.createElement('div'));
       NB.Inspector.mount($('#inspector'));
       NB.Shell.init();
+      mark('ui');
 
       /* ---------- restore ---------- */
       set(94, 'looking for your last session…');
       let restored = false;
       try {
-        await NB.Persistence.open();
         restored = await NB.Persistence.load(E);
       } catch (err) {
         console.warn('storage unavailable — autosave off', err);
@@ -118,16 +180,35 @@
         setTimeout(() => toast('Demo beat loaded — press space to play', 'ok', 3600), 700);
       }
 
+      mark('restore');
       NB.Shell.syncLoopBtn();
       NB.Shell.openDrawer('mixer');
 
+      /* ---------- the rest of the library, after the veil lifts ---------- */
+      if (phase2.length) {
+        setTimeout(async () => {
+          let more = 0;
+          try { more = hydrateRows(await NB.LoopCache.all()); } catch (e) {}
+          if (more) { NB.bus.emit('library:changed'); NB.Pads.render(); }
+          const stillMissing = allEntries.filter(([e]) => !NB.Library.has(idOf(e[2])));
+          if (stillMissing.length) {
+            totalPending = stillMissing.length; done = 0;
+            await runQueue(stillMissing, 3);
+            NB.bus.emit('library:changed');
+            NB.Pads.render();
+          }
+          mark('phase2');
+        }, 40);
+      }
+
+      mark('ready');
       set(100, 'ready');
       setTimeout(() => {
         $('#boot').classList.add('done');
-        setTimeout(() => { $('#boot').style.display = 'none'; }, 400);
+        setTimeout(() => { $('#boot').style.display = 'none'; }, 320);
         NB.Timeline.resize();
         if (restored) toast('Restored your last session', '', 2200);
-      }, 120);
+      }, 60);
 
       window.addEventListener('beforeunload', () => { NB.Persistence.save(); });
 

@@ -71,6 +71,7 @@
     bpm: 90,
     snap: 2,                       // sixteenths per snap step
     loopIn: 0, loopOut: SIX_PER_BAR * 4, loopEnabled: false,
+    swing: 0,                       // 0-0.6, delays every second 16th
     tracks: [],
     metronome: false,
     fx: null,                       // last FX rack values (restored on boot)
@@ -84,7 +85,34 @@
     const s = Library.get(sampleId);
     const lengthSix = Math.max(1, Math.round((s ? s.beats : 1) * 4));
     return { id: uid('clp'), sampleId, trackId, startSix,
-      lengthSix, trimStartSix: 0, trimEndSix: lengthSix, gain: 1 };
+      lengthSix, trimStartSix: 0, trimEndSix: lengthSix, gain: 1,
+      pitch: 0, reverse: false, fadeIn: 0, fadeOut: 0 };
+  }
+
+  /* Older projects (and the demo builder) create clips by hand, so normalise
+     the optional fields once on load instead of guarding at every call site. */
+  function normaliseClip(c) {
+    c.gain = c.gain == null ? 1 : c.gain;
+    c.pitch = c.pitch || 0;
+    c.reverse = !!c.reverse;
+    c.fadeIn = c.fadeIn || 0;
+    c.fadeOut = c.fadeOut || 0;
+    return c;
+  }
+
+  /* Reversed playback needs a reversed copy of the buffer; build it once per
+     sample and keep it on the sample object. */
+  function reversedBuffer(sample) {
+    if (sample._revBuffer) return sample._revBuffer;
+    const src = sample.buffer;
+    const out = new AudioBuffer({ numberOfChannels: src.numberOfChannels, length: src.length, sampleRate: src.sampleRate });
+    for (let ch = 0; ch < src.numberOfChannels; ch++) {
+      const a = src.getChannelData(ch);
+      const b = out.getChannelData(ch);
+      for (let i = 0, n = a.length; i < n; i++) b[i] = a[n - 1 - i];
+    }
+    sample._revBuffer = out;
+    return out;
   }
 
   function clipEnd(clip) { return clip.startSix + (clip.trimEndSix - clip.trimStartSix); }
@@ -176,11 +204,12 @@
     open() {
       return new Promise((resolve, reject) => {
         if (!('indexedDB' in window)) return reject(new Error('no indexedDB'));
-        const req = indexedDB.open('neonboomDB', 2);
+        const req = indexedDB.open('neonboomDB', 3);
         req.onupgradeneeded = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains('project')) db.createObjectStore('project', { keyPath: 'id' });
           if (!db.objectStoreNames.contains('samples')) db.createObjectStore('samples', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('loops')) db.createObjectStore('loops', { keyPath: 'id' });
         };
         req.onsuccess = () => { this.db = req.result; this.enabled = true; resolve(); };
         req.onerror = () => reject(req.error);
@@ -201,7 +230,8 @@
         tx.objectStore('project').put({
           id: 'current', name: Project.name, bpm: Project.bpm, snap: Project.snap,
           loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
-          metronome: Project.metronome, fx: Project.fx || null,
+          metronome: Project.metronome, swing: Project.swing, fx: Project.fx || null,
+          userSampleCount: Library.list().filter((x) => x.isUser).length,
           tracks: Project.tracks, savedAt: Date.now(),
         });
         Library.list().forEach((s) => {
@@ -232,7 +262,11 @@
         } catch (e) { res(null); }
       });
       const proj = await read('project', (s) => s.get('current'));
-      const samples = (await read('samples', (s) => s.getAll())) || [];
+      /* skip the sample store entirely when the project has no imports —
+         it is a second transaction and, on a cold profile, a slow one */
+      const samples = proj && proj.userSampleCount > 0
+        ? ((await read('samples', (s) => s.getAll())) || [])
+        : [];
 
       const idMap = {};
       for (const s of samples) {
@@ -254,11 +288,12 @@
       Project.loopOut = proj.loopOut || SIX_PER_BAR * 4;
       Project.loopEnabled = !!proj.loopEnabled;
       Project.metronome = !!proj.metronome;
+      Project.swing = proj.swing || 0;
       Project.fx = proj.fx || null;
       Project.tracks = proj.tracks.map((t) => ({
         ...t,
         clips: (t.clips || [])
-          .map((c) => ({ ...c, sampleId: idMap[c.sampleId] || c.sampleId, gain: c.gain == null ? 1 : c.gain }))
+          .map((c) => normaliseClip({ ...c, sampleId: idMap[c.sampleId] || c.sampleId }))
           .filter((c) => Library.items.has(c.sampleId)),
       }));
       return true;
@@ -272,6 +307,114 @@
     },
   };
 
+  /* ------------------------------------------------------------ loop cache
+     The 27 procedural loops cost ~2 s to synthesise. They are deterministic,
+     so the rendered PCM is cached in IndexedDB as 16-bit and re-hydrated on
+     the next visit: a warm start is a memory copy, not a synthesis run.
+     Bump SYNTH_VERSION whenever a generator changes. */
+  const SYNTH_VERSION = 1;
+
+  const LoopCache = {
+    key(name) { return `${name}@v${SYNTH_VERSION}@${REF_BPM}`; },
+
+    /* Read only the rows we need for the first paint. */
+    async many(names) {
+      const map = new Map();
+      if (!Persistence.db || !names.length) return map;
+      await new Promise((res) => {
+        try {
+          const tx = Persistence.db.transaction('loops', 'readonly');
+          const store = tx.objectStore('loops');
+          let left = names.length;
+          names.forEach((n) => {
+            const rq = store.get(this.key(n));
+            rq.onsuccess = () => {
+              if (rq.result) map.set(this.key(n), rq.result);
+              if (--left === 0) res();
+            };
+            rq.onerror = () => { if (--left === 0) res(); };
+          });
+          tx.oncomplete = res;
+          tx.onerror = res;
+        } catch (e) { res(); }
+      });
+      return map;
+    },
+
+    async all() {
+      if (!Persistence.db) return new Map();
+      const rows = await new Promise((res) => {
+        try {
+          const tx = Persistence.db.transaction('loops', 'readonly');
+          const rq = tx.objectStore('loops').getAll();
+          rq.onsuccess = () => res(rq.result || []);
+          rq.onerror = () => res([]);
+        } catch (e) { res([]); }
+      });
+      const map = new Map();
+      rows.forEach((r) => map.set(r.id, r));
+      return map;
+    },
+
+    /* Float32 → Int16 halves the storage and is inaudible for these loops.
+       The generators are mono-compatible (no panners), so a duplicate channel
+       is detected and stored once — another 2x off the cache and the read. */
+    async put(name, buffer, beats) {
+      if (!Persistence.db) return false;
+      const len = buffer.length;
+      const ch0 = buffer.getChannelData(0);
+      const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+      let mono = true;
+      if (ch1) {
+        for (let i = 0; i < len; i += 257) {
+          if (Math.abs(ch0[i] - ch1[i]) > 1e-6) { mono = false; break; }
+        }
+      }
+      const channels = mono ? 1 : buffer.numberOfChannels;
+      const data = new Int16Array(channels * len);
+      for (let c = 0; c < channels; c++) {
+        const src = c === 0 ? ch0 : buffer.getChannelData(c);
+        const off = c * len;
+        for (let i = 0; i < len; i++) {
+          const v = Math.max(-1, Math.min(1, src[i]));
+          data[off + i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+        }
+      }
+      try {
+        const tx = Persistence.db.transaction('loops', 'readwrite');
+        tx.objectStore('loops').put({
+          id: this.key(name), name, beats, channels, length: len,
+          sampleRate: buffer.sampleRate, data,
+        });
+        await new Promise((res) => { tx.oncomplete = res; tx.onerror = res; tx.onabort = res; });
+        return true;
+      } catch (e) { return false; }
+    },
+
+    hydrate(row, ctx) {
+      /* cached mono rows are expanded back to stereo so every downstream
+         assumption (peaks, reverse, export) stays the same */
+      const outCh = Math.max(2, row.channels);
+      const buf = ctx.createBuffer(outCh, row.length, row.sampleRate);
+      const len = row.length;
+      const data = row.data;
+      for (let c = 0; c < outCh; c++) {
+        const dst = buf.getChannelData(c);
+        const off = (c % row.channels) * len;
+        for (let i = 0; i < len; i++) dst[i] = data[off + i] / 32768;
+      }
+      return buf;
+    },
+
+    async clear() {
+      if (!Persistence.db) return;
+      try {
+        const tx = Persistence.db.transaction('loops', 'readwrite');
+        tx.objectStore('loops').clear();
+      } catch (e) {}
+    },
+  };
+
   /* ------------------------------------------------- project file (JSON) */
   function projectFile() {
     return {
@@ -280,11 +423,13 @@
       exportedAt: new Date().toISOString(),
       name: Project.name, bpm: Project.bpm, snap: Project.snap,
       loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
+      swing: Project.swing,
       tracks: Project.tracks.map((t) => ({
         name: t.name, color: t.color, vol: t.vol, pan: t.pan, mute: t.mute, solo: t.solo,
         clips: t.clips.map((c) => ({
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
-          startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix, gain: c.gain,
+          startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
+          gain: c.gain, pitch: c.pitch, reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut,
         })),
       })),
     };
@@ -309,9 +454,10 @@
       track.clips = (t.clips || []).map((c) => {
         const s = Library.byName(c.sampleName);
         if (!s) return null;
-        return { id: uid('clp'), sampleId: s.id, trackId: track.id, startSix: c.startSix,
+        return normaliseClip({ id: uid('clp'), sampleId: s.id, trackId: track.id, startSix: c.startSix,
           lengthSix: c.trimEndSix - c.trimStartSix, trimStartSix: c.trimStartSix,
-          trimEndSix: c.trimEndSix, gain: c.gain == null ? 1 : c.gain };
+          trimEndSix: c.trimEndSix, gain: c.gain, pitch: c.pitch,
+          reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut });
       }).filter(Boolean);
       return track;
     });
@@ -367,5 +513,7 @@
   NB.History = History;
   NB.Persistence = Persistence;
   NB.project = { initTracks, newTrack, newClip, clipEnd, addTrack, removeTrack, findClip,
-    removeClip, projectFile, loadProjectFile, buildDemo, computePeaks };
+    removeClip, projectFile, loadProjectFile, buildDemo, computePeaks,
+    normaliseClip, reversedBuffer, SYNTH_VERSION };
+  NB.LoopCache = LoopCache;
 })(window.NB = window.NB || {});

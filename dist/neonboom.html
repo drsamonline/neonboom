@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- NEONBOOM standalone build · 2026-11-10 · runs offline from file:// -->
+<!-- NEONBOOM standalone build · 2026-11-11 · runs offline from file:// -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
 <meta name="theme-color" content="#0b0d10">
@@ -1517,6 +1517,106 @@ select{cursor:pointer;}
 </script>
 <script>
 /* =========================================================================
+   NEONBOOM · audio/schedule.js
+   One place that turns a clip into a scheduled AudioBufferSourceNode.
+   Live playback and the offline export both call this, so what you hear and
+   what you render can never drift apart.
+
+   Handles: tempo sync (playbackRate), pitch (±semitones, sampler-style — it
+   changes speed too), reverse, per-clip gain, fade in / fade out, and the
+   "skip into the clip" case when playback starts mid-clip.
+   ========================================================================= */
+(function (NB) {
+  'use strict';
+  const { Grid } = NB.util;
+
+  const Schedule = {
+    /* playbackRate for a clip at the current project tempo and pitch */
+    rate(clip, sample, bpm) {
+      const pitch = clip.pitch || 0;
+      return (bpm / sample.refBpm) * Math.pow(2, pitch / 12);
+    },
+
+    /* Swing delays every second sixteenth. 0 = straight, 0.5 ≈ 2:1 shuffle. */
+    swingOffsetSix(clip, swing) {
+      if (!swing) return 0;
+      return clip.startSix % 2 === 1 ? swing * 0.5 : 0;
+    },
+
+    /* when the clip sounds, in context seconds, relative to `startCtxTime` */
+    when(clip, fromSix, startCtxTime, bpm, swing) {
+      const rel = Math.max(0, clip.startSix - fromSix) + this.swingOffsetSix(clip, swing || 0);
+      return startCtxTime + Grid.sixToSec(rel, bpm);
+    },
+
+    /**
+     * Schedule one clip.
+     * @returns {AudioBufferSourceNode|null}
+     */
+    clip(ctx, dest, clip, sample, opts) {
+      const { when, fromSix = 0, bpm, swing = 0 } = opts;
+      const trimIn = clip.trimStartSix;
+      const trimOut = clip.trimEndSix;
+      const clipEndSix = clip.startSix + (trimOut - trimIn);
+      if (clipEndSix <= fromSix) return null;               // already passed
+
+      const skipSix = Math.max(0, fromSix - clip.startSix);
+      const durSix = (trimOut - trimIn) - skipSix;
+      if (durSix <= 0) return null;
+
+      const rate = this.rate(clip, sample, bpm);
+      const reverse = !!clip.reverse;
+      const buffer = reverse ? NB.project.reversedBuffer(sample) : sample.buffer;
+
+      /* buffer offset is in SOURCE time (the sample's own tempo) */
+      let bufOffset = ((trimIn + skipSix) / 4) * (60 / sample.refBpm);
+      let durSec = (durSix / 4) * (60 / sample.refBpm);
+      if (reverse) {
+        bufOffset = Math.max(0, buffer.duration - (bufOffset + durSec));
+        if (bufOffset + durSec > buffer.duration) durSec = Math.max(0.001, buffer.duration - bufOffset);
+      }
+
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.playbackRate.value = rate;
+
+      const g = ctx.createGain();
+      const level = clip.gain == null ? 1 : clip.gain;
+      const playDur = durSec / rate;                        // seconds on the timeline
+      const fadeIn = Grid.sixToSec(clip.fadeIn || 0, bpm);
+      const fadeOut = Grid.sixToSec(clip.fadeOut || 0, bpm);
+
+      g.gain.cancelScheduledValues(when);
+      if (fadeIn > 0.001) {
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.linearRampToValueAtTime(level, when + Math.min(fadeIn, playDur));
+      } else {
+        g.gain.setValueAtTime(level, when);
+      }
+      if (fadeOut > 0.001) {
+        const outStart = when + Math.max(0, playDur - Math.min(fadeOut, playDur));
+        g.gain.setValueAtTime(level, outStart);
+        g.gain.linearRampToValueAtTime(0.0001, when + playDur);
+      }
+
+      src.connect(g);
+      g.connect(dest);
+      try {
+        src.start(Math.max(when, ctx.currentTime + 0.001), bufOffset, durSec);
+      } catch (e) {
+        return null;
+      }
+      src._gainNode = g;
+      return src;
+    },
+  };
+
+  NB.Schedule = Schedule;
+})(window.NB = window.NB || {});
+
+</script>
+<script>
+/* =========================================================================
    NEONBOOM · audio/wav.js
    16-bit PCM WAV encoder + offline render of the arrangement.
    The offline graph mirrors the live one exactly (same builder, same FX
@@ -1570,7 +1670,7 @@ select{cursor:pointer;}
     return tail;
   }
 
-  async function renderArrangement({ loopOnly = false, sampleLibrary, project, engine, fx }) {
+  async function renderArrangement({ loopOnly = false, soloTrack = null, sampleLibrary, project, engine, fx }) {
     const bpm = project.bpm;
     let startSix = 0, endSix = SIX_PER_BAR * 4;
 
@@ -1608,34 +1708,26 @@ select{cursor:pointer;}
     om.masterGain.gain.value = fx.masterVol;
 
     const anySolo = project.tracks.some((t) => t.solo);
-    const buses = project.tracks.map((t) => {
+    const buses = project.tracks.map((t, i) => {
       const bus = engine.buildTrackBus(oac, om);
-      const audible = !t.mute && (!anySolo || t.solo);
+      const audible = soloTrack != null ? i === soloTrack : (!t.mute && (!anySolo || t.solo));
       bus.gain.gain.value = audible ? t.vol : 0;
       if (bus.panner) bus.panner.pan.value = t.pan;
       return bus;
     });
 
     project.tracks.forEach((track, ti) => {
-      const audible = !track.mute && (!anySolo || track.solo);
+      const audible = soloTrack != null ? ti === soloTrack : (!track.mute && (!anySolo || track.solo));
       if (!audible) return;
       clipsOf(track).forEach((clip) => {
         const sample = sampleLibrary.get(clip.sampleId);
         if (!sample) return;
-        const clipStart = clip.startSix;
         const clipEnd = clip.startSix + (clip.trimEndSix - clip.trimStartSix);
-        if (clipEnd <= startSix || clipStart >= endSix) return;
-        const skip = Math.max(0, startSix - clipStart);
-        const rate = bpm / sample.refBpm;
-        const when = Grid.sixToSec(Math.max(0, clipStart - startSix), bpm);
-        const bufOffsetSec = ((clip.trimStartSix + skip) / 4) * (60 / sample.refBpm);
-        const durSec = ((clip.trimEndSix - clip.trimStartSix - skip) / 4) * (60 / sample.refBpm);
-        if (durSec <= 0) return;
-        const src = oac.createBufferSource();
-        src.buffer = sample.buffer;
-        src.playbackRate.value = rate;
-        src.connect(buses[ti].gain);
-        src.start(when, bufOffsetSec, durSec);
+        if (clipEnd <= startSix || clip.startSix >= endSix) return;
+        NB.Schedule.clip(oac, buses[ti].gain, clip, sample, {
+          when: NB.Schedule.when(clip, startSix, 0, bpm, project.swing || 0),
+          fromSix: startSix, bpm, swing: project.swing || 0,
+        });
       });
     });
 
@@ -1650,7 +1742,104 @@ select{cursor:pointer;}
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
-  NB.Wav = { encodeWAV, renderArrangement, download, tailSeconds };
+  /* ---------------------------------------------------------------- stems
+     Render each track on its own through the same master chain and bundle the
+     WAVs into a store-only ZIP, so the whole thing stays dependency-free. */
+  async function renderStems(opts) {
+    const out = [];
+    const tracks = opts.project.tracks;
+    for (let i = 0; i < tracks.length; i++) {
+      const t = tracks[i];
+      if (!t.clips.length) continue;
+      const { rendered } = await renderArrangement({ ...opts, loopOnly: false, soloTrack: i });
+      out.push({ name: `${String(i + 1).padStart(2, '0')}-${slug(t.name)}.wav`, blob: encodeWAV(rendered) });
+    }
+    return out;
+  }
+
+  function slug(s) {
+    return (s || 'track').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'track';
+  }
+
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function crc32(bytes) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  /* ZIP with stored (uncompressed) entries — WAV data does not compress well
+     and this keeps the writer to a few dozen lines. */
+  async function zip(files) {
+    const enc = new TextEncoder();
+    const parts = [];
+    const central = [];
+    let offset = 0;
+
+    for (const f of files) {
+      const nameBytes = enc.encode(f.name);
+      const data = new Uint8Array(await f.blob.arrayBuffer());
+      const crc = crc32(data);
+
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true);
+      local.setUint16(4, 20, true);
+      local.setUint16(6, 0, true);
+      local.setUint16(8, 0, true);          // method: store
+      local.setUint16(10, 0, true);         // time
+      local.setUint16(12, 0x21, true);      // date (1980-01-01)
+      local.setUint32(14, crc, true);
+      local.setUint32(18, data.length, true);
+      local.setUint32(22, data.length, true);
+      local.setUint16(26, nameBytes.length, true);
+      local.setUint16(28, 0, true);
+
+      parts.push(new Uint8Array(local.buffer), nameBytes, data);
+
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(4, 20, true);
+      cd.setUint16(6, 20, true);
+      cd.setUint16(8, 0, true);
+      cd.setUint16(10, 0, true);
+      cd.setUint16(12, 0, true);
+      cd.setUint16(14, 0x21, true);
+      cd.setUint32(16, crc, true);
+      cd.setUint32(20, data.length, true);
+      cd.setUint32(24, data.length, true);
+      cd.setUint16(28, nameBytes.length, true);
+      cd.setUint16(30, 0, true);
+      cd.setUint16(32, 0, true);
+      cd.setUint16(34, 0, true);
+      cd.setUint16(36, 0, true);
+      cd.setUint32(38, 0, true);
+      cd.setUint32(42, offset, true);
+      central.push(new Uint8Array(cd.buffer), nameBytes);
+
+      offset += 30 + nameBytes.length + data.length;
+    }
+
+    const centralSize = central.reduce((n, a) => n + a.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, files.length, true);
+    end.setUint16(10, files.length, true);
+    end.setUint32(12, centralSize, true);
+    end.setUint32(16, offset, true);
+
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: 'application/zip' });
+  }
+
+  NB.Wav = { encodeWAV, renderArrangement, renderStems, zip, download, tailSeconds, slug };
 })(window.NB = window.NB || {});
 
 </script>
@@ -1728,6 +1917,7 @@ select{cursor:pointer;}
     bpm: 90,
     snap: 2,                       // sixteenths per snap step
     loopIn: 0, loopOut: SIX_PER_BAR * 4, loopEnabled: false,
+    swing: 0,                       // 0-0.6, delays every second 16th
     tracks: [],
     metronome: false,
     fx: null,                       // last FX rack values (restored on boot)
@@ -1741,7 +1931,34 @@ select{cursor:pointer;}
     const s = Library.get(sampleId);
     const lengthSix = Math.max(1, Math.round((s ? s.beats : 1) * 4));
     return { id: uid('clp'), sampleId, trackId, startSix,
-      lengthSix, trimStartSix: 0, trimEndSix: lengthSix, gain: 1 };
+      lengthSix, trimStartSix: 0, trimEndSix: lengthSix, gain: 1,
+      pitch: 0, reverse: false, fadeIn: 0, fadeOut: 0 };
+  }
+
+  /* Older projects (and the demo builder) create clips by hand, so normalise
+     the optional fields once on load instead of guarding at every call site. */
+  function normaliseClip(c) {
+    c.gain = c.gain == null ? 1 : c.gain;
+    c.pitch = c.pitch || 0;
+    c.reverse = !!c.reverse;
+    c.fadeIn = c.fadeIn || 0;
+    c.fadeOut = c.fadeOut || 0;
+    return c;
+  }
+
+  /* Reversed playback needs a reversed copy of the buffer; build it once per
+     sample and keep it on the sample object. */
+  function reversedBuffer(sample) {
+    if (sample._revBuffer) return sample._revBuffer;
+    const src = sample.buffer;
+    const out = new AudioBuffer({ numberOfChannels: src.numberOfChannels, length: src.length, sampleRate: src.sampleRate });
+    for (let ch = 0; ch < src.numberOfChannels; ch++) {
+      const a = src.getChannelData(ch);
+      const b = out.getChannelData(ch);
+      for (let i = 0, n = a.length; i < n; i++) b[i] = a[n - 1 - i];
+    }
+    sample._revBuffer = out;
+    return out;
   }
 
   function clipEnd(clip) { return clip.startSix + (clip.trimEndSix - clip.trimStartSix); }
@@ -1833,11 +2050,12 @@ select{cursor:pointer;}
     open() {
       return new Promise((resolve, reject) => {
         if (!('indexedDB' in window)) return reject(new Error('no indexedDB'));
-        const req = indexedDB.open('neonboomDB', 2);
+        const req = indexedDB.open('neonboomDB', 3);
         req.onupgradeneeded = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains('project')) db.createObjectStore('project', { keyPath: 'id' });
           if (!db.objectStoreNames.contains('samples')) db.createObjectStore('samples', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('loops')) db.createObjectStore('loops', { keyPath: 'id' });
         };
         req.onsuccess = () => { this.db = req.result; this.enabled = true; resolve(); };
         req.onerror = () => reject(req.error);
@@ -1858,7 +2076,8 @@ select{cursor:pointer;}
         tx.objectStore('project').put({
           id: 'current', name: Project.name, bpm: Project.bpm, snap: Project.snap,
           loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
-          metronome: Project.metronome, fx: Project.fx || null,
+          metronome: Project.metronome, swing: Project.swing, fx: Project.fx || null,
+          userSampleCount: Library.list().filter((x) => x.isUser).length,
           tracks: Project.tracks, savedAt: Date.now(),
         });
         Library.list().forEach((s) => {
@@ -1889,7 +2108,11 @@ select{cursor:pointer;}
         } catch (e) { res(null); }
       });
       const proj = await read('project', (s) => s.get('current'));
-      const samples = (await read('samples', (s) => s.getAll())) || [];
+      /* skip the sample store entirely when the project has no imports —
+         it is a second transaction and, on a cold profile, a slow one */
+      const samples = proj && proj.userSampleCount > 0
+        ? ((await read('samples', (s) => s.getAll())) || [])
+        : [];
 
       const idMap = {};
       for (const s of samples) {
@@ -1911,11 +2134,12 @@ select{cursor:pointer;}
       Project.loopOut = proj.loopOut || SIX_PER_BAR * 4;
       Project.loopEnabled = !!proj.loopEnabled;
       Project.metronome = !!proj.metronome;
+      Project.swing = proj.swing || 0;
       Project.fx = proj.fx || null;
       Project.tracks = proj.tracks.map((t) => ({
         ...t,
         clips: (t.clips || [])
-          .map((c) => ({ ...c, sampleId: idMap[c.sampleId] || c.sampleId, gain: c.gain == null ? 1 : c.gain }))
+          .map((c) => normaliseClip({ ...c, sampleId: idMap[c.sampleId] || c.sampleId }))
           .filter((c) => Library.items.has(c.sampleId)),
       }));
       return true;
@@ -1929,6 +2153,114 @@ select{cursor:pointer;}
     },
   };
 
+  /* ------------------------------------------------------------ loop cache
+     The 27 procedural loops cost ~2 s to synthesise. They are deterministic,
+     so the rendered PCM is cached in IndexedDB as 16-bit and re-hydrated on
+     the next visit: a warm start is a memory copy, not a synthesis run.
+     Bump SYNTH_VERSION whenever a generator changes. */
+  const SYNTH_VERSION = 1;
+
+  const LoopCache = {
+    key(name) { return `${name}@v${SYNTH_VERSION}@${REF_BPM}`; },
+
+    /* Read only the rows we need for the first paint. */
+    async many(names) {
+      const map = new Map();
+      if (!Persistence.db || !names.length) return map;
+      await new Promise((res) => {
+        try {
+          const tx = Persistence.db.transaction('loops', 'readonly');
+          const store = tx.objectStore('loops');
+          let left = names.length;
+          names.forEach((n) => {
+            const rq = store.get(this.key(n));
+            rq.onsuccess = () => {
+              if (rq.result) map.set(this.key(n), rq.result);
+              if (--left === 0) res();
+            };
+            rq.onerror = () => { if (--left === 0) res(); };
+          });
+          tx.oncomplete = res;
+          tx.onerror = res;
+        } catch (e) { res(); }
+      });
+      return map;
+    },
+
+    async all() {
+      if (!Persistence.db) return new Map();
+      const rows = await new Promise((res) => {
+        try {
+          const tx = Persistence.db.transaction('loops', 'readonly');
+          const rq = tx.objectStore('loops').getAll();
+          rq.onsuccess = () => res(rq.result || []);
+          rq.onerror = () => res([]);
+        } catch (e) { res([]); }
+      });
+      const map = new Map();
+      rows.forEach((r) => map.set(r.id, r));
+      return map;
+    },
+
+    /* Float32 → Int16 halves the storage and is inaudible for these loops.
+       The generators are mono-compatible (no panners), so a duplicate channel
+       is detected and stored once — another 2x off the cache and the read. */
+    async put(name, buffer, beats) {
+      if (!Persistence.db) return false;
+      const len = buffer.length;
+      const ch0 = buffer.getChannelData(0);
+      const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+      let mono = true;
+      if (ch1) {
+        for (let i = 0; i < len; i += 257) {
+          if (Math.abs(ch0[i] - ch1[i]) > 1e-6) { mono = false; break; }
+        }
+      }
+      const channels = mono ? 1 : buffer.numberOfChannels;
+      const data = new Int16Array(channels * len);
+      for (let c = 0; c < channels; c++) {
+        const src = c === 0 ? ch0 : buffer.getChannelData(c);
+        const off = c * len;
+        for (let i = 0; i < len; i++) {
+          const v = Math.max(-1, Math.min(1, src[i]));
+          data[off + i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+        }
+      }
+      try {
+        const tx = Persistence.db.transaction('loops', 'readwrite');
+        tx.objectStore('loops').put({
+          id: this.key(name), name, beats, channels, length: len,
+          sampleRate: buffer.sampleRate, data,
+        });
+        await new Promise((res) => { tx.oncomplete = res; tx.onerror = res; tx.onabort = res; });
+        return true;
+      } catch (e) { return false; }
+    },
+
+    hydrate(row, ctx) {
+      /* cached mono rows are expanded back to stereo so every downstream
+         assumption (peaks, reverse, export) stays the same */
+      const outCh = Math.max(2, row.channels);
+      const buf = ctx.createBuffer(outCh, row.length, row.sampleRate);
+      const len = row.length;
+      const data = row.data;
+      for (let c = 0; c < outCh; c++) {
+        const dst = buf.getChannelData(c);
+        const off = (c % row.channels) * len;
+        for (let i = 0; i < len; i++) dst[i] = data[off + i] / 32768;
+      }
+      return buf;
+    },
+
+    async clear() {
+      if (!Persistence.db) return;
+      try {
+        const tx = Persistence.db.transaction('loops', 'readwrite');
+        tx.objectStore('loops').clear();
+      } catch (e) {}
+    },
+  };
+
   /* ------------------------------------------------- project file (JSON) */
   function projectFile() {
     return {
@@ -1937,11 +2269,13 @@ select{cursor:pointer;}
       exportedAt: new Date().toISOString(),
       name: Project.name, bpm: Project.bpm, snap: Project.snap,
       loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
+      swing: Project.swing,
       tracks: Project.tracks.map((t) => ({
         name: t.name, color: t.color, vol: t.vol, pan: t.pan, mute: t.mute, solo: t.solo,
         clips: t.clips.map((c) => ({
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
-          startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix, gain: c.gain,
+          startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
+          gain: c.gain, pitch: c.pitch, reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut,
         })),
       })),
     };
@@ -1966,9 +2300,10 @@ select{cursor:pointer;}
       track.clips = (t.clips || []).map((c) => {
         const s = Library.byName(c.sampleName);
         if (!s) return null;
-        return { id: uid('clp'), sampleId: s.id, trackId: track.id, startSix: c.startSix,
+        return normaliseClip({ id: uid('clp'), sampleId: s.id, trackId: track.id, startSix: c.startSix,
           lengthSix: c.trimEndSix - c.trimStartSix, trimStartSix: c.trimStartSix,
-          trimEndSix: c.trimEndSix, gain: c.gain == null ? 1 : c.gain };
+          trimEndSix: c.trimEndSix, gain: c.gain, pitch: c.pitch,
+          reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut });
       }).filter(Boolean);
       return track;
     });
@@ -2024,7 +2359,9 @@ select{cursor:pointer;}
   NB.History = History;
   NB.Persistence = Persistence;
   NB.project = { initTracks, newTrack, newClip, clipEnd, addTrack, removeTrack, findClip,
-    removeClip, projectFile, loadProjectFile, buildDemo, computePeaks };
+    removeClip, projectFile, loadProjectFile, buildDemo, computePeaks,
+    normaliseClip, reversedBuffer, SYNTH_VERSION };
+  NB.LoopCache = LoopCache;
 })(window.NB = window.NB || {});
 
 </script>
@@ -2127,26 +2464,13 @@ select{cursor:pointer;}
       P.tracks.forEach((track, ti) => {
         if (track.mute || (anySolo && !track.solo)) return;
         track.clips.forEach((clip) => {
-          const end = clip.startSix + (clip.trimEndSix - clip.trimStartSix);
-          if (end <= fromSix) return;
           const sample = NB.Library.get(clip.sampleId);
           if (!sample) return;
-          const skip = Math.max(0, fromSix - clip.startSix);
-          const when = ctxStartTime + Grid.sixToSec(Math.max(0, clip.startSix - fromSix), bpm);
-          const rate = bpm / sample.refBpm;
-          const bufOffsetSec = ((clip.trimStartSix + skip) / 4) * (60 / sample.refBpm);
-          const durSec = ((clip.trimEndSix - clip.trimStartSix - skip) / 4) * (60 / sample.refBpm);
-          if (durSec <= 0) return;
-
-          const src = E.ctx.createBufferSource();
-          src.buffer = sample.buffer;
-          src.playbackRate.value = rate;
-          const g = E.ctx.createGain();
-          g.gain.value = clip.gain == null ? 1 : clip.gain;
-          src.connect(g); g.connect(E.tracks[ti].gain);
-          try { src.start(when, bufOffsetSec, durSec); } catch (e) { return; }
-          src._gainNode = g;
-          E._activeSources.push(src);
+          const src = NB.Schedule.clip(E.ctx, E.tracks[ti].gain, clip, sample, {
+            when: NB.Schedule.when(clip, fromSix, ctxStartTime, bpm, P.swing),
+            fromSix, bpm, swing: P.swing,
+          });
+          if (src) E._activeSources.push(src);
         });
       });
 
@@ -2523,6 +2847,35 @@ select{cursor:pointer;}
             ctx.restore();
           }
 
+          /* fades: a translucent wedge showing what the envelope does */
+          const fadeInPx = Math.min(w, (clip.fadeIn || 0) * px);
+          const fadeOutPx = Math.min(w, (clip.fadeOut || 0) * px);
+          if (fadeInPx > 1) {
+            ctx.fillStyle = 'rgba(0,0,0,.42)';
+            ctx.beginPath();
+            ctx.moveTo(x, y + h); ctx.lineTo(x, y + 13); ctx.lineTo(x + fadeInPx, y + 13);
+            ctx.closePath(); ctx.fill();
+          }
+          if (fadeOutPx > 1) {
+            ctx.fillStyle = 'rgba(0,0,0,.42)';
+            ctx.beginPath();
+            ctx.moveTo(x + w, y + h); ctx.lineTo(x + w, y + 13); ctx.lineTo(x + w - fadeOutPx, y + 13);
+            ctx.closePath(); ctx.fill();
+          }
+
+          /* pitch / reverse badge */
+          const pitch = clip.pitch || 0;
+          if ((pitch !== 0 || clip.reverse) && w > 46) {
+            const tag = (clip.reverse ? '⏪' : '') + (pitch !== 0 ? (pitch > 0 ? '+' : '') + pitch : '');
+            ctx.font = '700 8.5px ui-monospace,Menlo,monospace';
+            const tw = ctx.measureText(tag).width + 8;
+            ctx.fillStyle = 'rgba(8,10,12,.78)';
+            roundRect(ctx, x + w - tw - 3, y + 2.5, tw, 10, 3);
+            ctx.fill();
+            ctx.fillStyle = '#ffd479';
+            ctx.fillText(tag, x + w - tw + 1, y + 10.5);
+          }
+
           /* border / selection */
           roundRect(ctx, x + .5, y + .5, w - 1, h - 1, 5);
           ctx.lineWidth = sel ? 2 : 1;
@@ -2706,11 +3059,16 @@ select{cursor:pointer;}
           this.drag = { type: 'move', clip: hit.clip, startX: x, origStart: hit.clip.startSix, origTrack: hit.track.id, moved };
         }
 
-        /* long-press → clip actions */
+        /* long-press → clip actions. The timer is only a convenience: onUp
+           re-checks the elapsed time, so a starved timer (heavy render, slow
+           device) still opens the sheet instead of silently doing nothing. */
+        const pressStart = performance.now();
+        this._pressStart = pressStart;
         clearTimeout(this.longPressTimer);
         this.longPressTimer = setTimeout(() => {
           if (this.drag && !this.drag.moved.v) {
             this.drag = null;
+            this._pressStart = 0;
             haptic(14);
             NB.Shell.openClipSheet(this.selectedClipId);
           }
@@ -2769,6 +3127,14 @@ select{cursor:pointer;}
         function onUp() {
           const self = Timeline;
           clearTimeout(self.longPressTimer);
+          const held = self._pressStart ? performance.now() - self._pressStart : 0;
+          self._pressStart = 0;
+          if (held > 450 && self.drag && !self.drag.moved.v) {
+            self.drag = null;
+            haptic(14);
+            NB.Shell.openClipSheet(self.selectedClipId);
+            return;
+          }
           c.removeEventListener('pointermove', onMove);
           if (self.drag && self.drag.moved.v) {
             self.draw();
@@ -3515,6 +3881,50 @@ select{cursor:pointer;}
       gIn.addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
       this.host.appendChild(gainCard);
 
+      /* sound: pitch, reverse, fades */
+      const sound = el('div', { class: 'insp-card' });
+      const pitch = clip.pitch || 0;
+      sound.innerHTML = `<h4>Sound</h4>
+        <div class="knobRow"><label>Pitch</label>
+          <input type="range" min="-12" max="12" step="1" value="${pitch}" data-k="pitch">
+          <span class="val">${pitch > 0 ? '+' : ''}${pitch} st</span></div>
+        <div class="knobRow"><label>Fade in</label>
+          <input type="range" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeIn || 0}" data-k="fadeIn">
+          <span class="val">${clip.fadeIn || 0}/16</span></div>
+        <div class="knobRow"><label>Fade out</label>
+          <input type="range" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeOut || 0}" data-k="fadeOut">
+          <span class="val">${clip.fadeOut || 0}/16</span></div>
+        <div class="grid2" style="margin-top:4px">
+          <button class="btn ${clip.reverse ? 'on' : ''}" id="clipReverse">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
+          <button class="btn" id="clipReset">Reset</button>
+        </div>
+        <p style="font-size:10.5px;color:var(--ink-2);margin:8px 0 0">Pitch is sampler-style: it changes speed with the pitch, like a turntable.</p>`;
+      const fmtPitch = (v) => (v > 0 ? '+' : '') + v + ' st';
+      sound.querySelectorAll('input[data-k]').forEach((inp) => {
+        const k = inp.dataset.k;
+        const out = inp.parentElement.querySelector('.val');
+        inp.addEventListener('input', () => {
+          clip[k] = k === 'pitch' ? parseInt(inp.value, 10) : parseInt(inp.value, 10);
+          out.textContent = k === 'pitch' ? fmtPitch(clip[k]) : `${clip[k]}/16`;
+          NB.Timeline.draw();
+        });
+        inp.addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      });
+      sound.querySelector('#clipReverse').addEventListener('click', (e) => {
+        NB.History.push();
+        clip.reverse = !clip.reverse;
+        e.currentTarget.classList.toggle('on', clip.reverse);
+        e.currentTarget.textContent = clip.reverse ? '⏪ Reversed' : '⏩ Reverse';
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+      });
+      sound.querySelector('#clipReset').addEventListener('click', () => {
+        NB.History.push();
+        clip.pitch = 0; clip.reverse = false; clip.fadeIn = 0; clip.fadeOut = 0; clip.gain = 1;
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+        this.render();
+      });
+      this.host.appendChild(sound);
+
       /* actions */
       const act = el('div', { class: 'insp-card' });
       act.innerHTML = '<h4>Actions</h4><div class="grid2" id="clipActions"></div>';
@@ -3552,7 +3962,20 @@ select{cursor:pointer;}
         <div class="statRow"><span>Clips</span><b>${clips}</b></div>
         <div class="statRow"><span>Tempo</span><b>${P.bpm} BPM</b></div>
         <div class="statRow"><span>Loop</span><b>${P.loopEnabled ? Grid.fmtBBT(P.loopIn) + ' → ' + Grid.fmtBBT(P.loopOut) : 'off'}</b></div>
+        <div class="knobRow" style="margin-top:8px"><label>Swing</label>
+          <input type="range" min="0" max="0.6" step="0.02" value="${P.swing || 0}" id="projSwing">
+          <span class="val">${Math.round((P.swing || 0) * 100)}%</span></div>
         <div class="grid2" style="margin-top:10px" id="projBtns"></div>`;
+      const swingIn = card.querySelector('#projSwing');
+      const swingOut = swingIn && swingIn.nextElementSibling;
+      if (swingIn) {
+        swingIn.addEventListener('input', () => {
+          P.swing = parseFloat(swingIn.value);
+          swingOut.textContent = Math.round(P.swing * 100) + '%';
+        });
+        swingIn.addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      }
+
       const box = card.querySelector('#projBtns');
       const mk = (label, fn, cls = '') => {
         const b = el('button', { class: 'btn ' + cls, text: label });
@@ -3891,16 +4314,18 @@ select{cursor:pointer;}
           <div class="row">
             <button class="btn primary" id="exWav">Download WAV</button>
             <button class="btn" id="exLoop">Download loop region</button>
+            <button class="btn" id="exStems">Download stems (.zip)</button>
             <button class="btn" id="exJson">Save project file</button>
             <button class="btn" id="exOpen">Open project file</button>
           </div>
           <div class="row">
             <button class="btn danger" id="exClear">Clear autosave &amp; start over</button>
           </div>
-          <p style="font-size:11px;color:var(--ink-2)">Tip: bounce a short loop region for a sample pack, or the whole arrangement for a track. Long renders (&gt;8 min) take a few seconds and a chunk of memory.</p>
+          <p style="font-size:11px;color:var(--ink-2)">Tip: bounce a short loop region for a sample pack, or the whole arrangement for a track. Stems render each track on its own, through the same master chain, and arrive as one zip. Long renders (&gt;8 min) take a few seconds and a chunk of memory.</p>
         </div>`;
       $('#exWav', host).addEventListener('click', () => this.exportWav(false));
       $('#exLoop', host).addEventListener('click', () => this.exportWav(true));
+      $('#exStems', host).addEventListener('click', () => this.exportStems());
       $('#exJson', host).addEventListener('click', () => this.saveProjectFile());
       $('#exOpen', host).addEventListener('click', () => this.openProjectFile());
       $('#exClear', host).addEventListener('click', async () => {
@@ -3977,6 +4402,9 @@ select{cursor:pointer;}
             <option value="2"${P.snap === 2 ? ' selected' : ''}>1/8 bar</option>
             <option value="1"${P.snap === 1 ? ' selected' : ''}>1/16 bar</option>
           </select></div>
+        <div class="sheetRow"><label>Swing</label>
+          <input type="range" id="shSwing" min="0" max="0.6" step="0.02" value="${P.swing || 0}">
+          <span class="val" id="shSwingVal">${Math.round((P.swing || 0) * 100)}%</span></div>
         <div class="sheetRow"><label>Metronome</label><input type="checkbox" id="shMetro" ${P.metronome ? 'checked' : ''} style="width:22px;height:22px"></div>
         <div class="sheetBtns">
           <button class="btn" id="shDemo">Load demo</button>
@@ -3989,6 +4417,11 @@ select{cursor:pointer;}
       const s = $('#sheet');
       $('#shName', s).addEventListener('change', (e) => { P.name = e.target.value || P.name; NB.Persistence.saveSoon(); });
       $('#shSnap', s).addEventListener('change', (e) => { P.snap = parseInt(e.target.value, 10); NB.Persistence.saveSoon(); });
+      $('#shSwing', s).addEventListener('input', (e) => {
+        P.swing = parseFloat(e.target.value);
+        $('#shSwingVal', s).textContent = Math.round(P.swing * 100) + '%';
+      });
+      $('#shSwing', s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
       $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.loadDemo(); });
       $('#shSave', s).addEventListener('click', () => { this.closeSheet(); this.saveProjectFile(); });
@@ -4003,16 +4436,18 @@ select{cursor:pointer;}
 
     /* ------------------------------------------------------------- sheets */
     wireSheet() {
-      /* ignore the tap that is still in flight when the sheet opens — a
-         long-press otherwise opens and instantly closes it. */
-      $('#scrim').addEventListener('click', () => {
-        if (Date.now() - (this._sheetOpenedAt || 0) < 700) return;
+      /* pointerdown, not click: a long-press opens the sheet while the finger
+         is still down, and the compatibility click that arrives on release
+         would close it again immediately. A pointerdown can only come from a
+         *new* gesture, so dismissal stays predictable on every device. */
+      $('#scrim').addEventListener('pointerdown', () => {
+        if (performance.now() - (this._sheetOpenedAt || 0) < 150) return;
         this.closeSheet();
       });
     },
 
     sheet(html) {
-      this._sheetOpenedAt = Date.now();
+      this._sheetOpenedAt = performance.now();
       const s = $('#sheet');
       s.innerHTML = `<div class="grab"></div>${html}`;
       s.classList.add('on');
@@ -4035,9 +4470,19 @@ select{cursor:pointer;}
         <div class="sheetRow"><label>Gain</label>
           <input type="range" id="csGain" min="0" max="1.5" step="0.01" value="${gain}">
           <span class="val" id="csGainVal">${Math.round(gain * 100)}%</span></div>
+        <div class="sheetRow"><label>Pitch</label>
+          <input type="range" id="csPitch" min="-12" max="12" step="1" value="${clip.pitch || 0}">
+          <span class="val" id="csPitchVal">${clip.pitch > 0 ? '+' : ''}${clip.pitch || 0} st</span></div>
+        <div class="sheetRow"><label>Fade in</label>
+          <input type="range" id="csFadeIn" min="0" max="${Math.floor((clip.trimEndSix - clip.trimStartSix) / 2)}" step="1" value="${clip.fadeIn || 0}">
+          <span class="val" id="csFadeInVal">${clip.fadeIn || 0}</span></div>
+        <div class="sheetRow"><label>Fade out</label>
+          <input type="range" id="csFadeOut" min="0" max="${Math.floor((clip.trimEndSix - clip.trimStartSix) / 2)}" step="1" value="${clip.fadeOut || 0}">
+          <span class="val" id="csFadeOutVal">${clip.fadeOut || 0}</span></div>
         <div class="sheetRow"><label>Starts</label><span style="font-family:var(--mono);font-size:11px">${Grid.fmtBBT(clip.startSix)}</span></div>
         <div class="sheetRow"><label>Length</label><span style="font-family:var(--mono);font-size:11px">${Grid.fmtBars(clip.trimEndSix - clip.trimStartSix)}</span></div>
         <div class="sheetBtns">
+          <button class="btn" id="csRev">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
           <button class="btn" id="csDup">Duplicate</button>
           <button class="btn" id="csSplit">Split here</button>
           <button class="btn" id="csQuant">Quantize</button>
@@ -4049,6 +4494,27 @@ select{cursor:pointer;}
         $('#csGainVal', s).textContent = Math.round(clip.gain * 100) + '%';
       });
       $('#csGain', s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      $('#csPitch', s).addEventListener('input', (e) => {
+        clip.pitch = parseInt(e.target.value, 10);
+        $('#csPitchVal', s).textContent = (clip.pitch > 0 ? '+' : '') + clip.pitch + ' st';
+        NB.Timeline.draw();
+      });
+      $('#csPitch', s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      ['csFadeIn', 'csFadeOut'].forEach((id) => {
+        const key = id === 'csFadeIn' ? 'fadeIn' : 'fadeOut';
+        $('#' + id, s).addEventListener('input', (e) => {
+          clip[key] = parseInt(e.target.value, 10);
+          $('#' + id + 'Val', s).textContent = clip[key];
+          NB.Timeline.draw();
+        });
+        $('#' + id, s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      });
+      $('#csRev', s).addEventListener('click', (e) => {
+        NB.History.push();
+        clip.reverse = !clip.reverse;
+        e.currentTarget.textContent = clip.reverse ? '⏪ Reversed' : '⏩ Reverse';
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+      });
       $('#csDup', s).addEventListener('click', () => { this.closeSheet(); NB.Timeline.duplicateSelected(); });
       $('#csSplit', s).addEventListener('click', () => { this.closeSheet(); NB.Timeline.splitAtPlayhead(); });
       $('#csQuant', s).addEventListener('click', () => { this.closeSheet(); NB.Timeline.quantize(); });
@@ -4217,6 +4683,32 @@ select{cursor:pointer;}
       }
     },
 
+    async exportStems() {
+      const btn = $('#btnExport');
+      const label = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'Rendering…';
+      const t0 = performance.now();
+      try {
+        const stems = await NB.Wav.renderStems({
+          sampleLibrary: NB.Library.items,
+          project: NB.Project,
+          engine: NB.Engine,
+          fx: NB.Fx.snapshot(),
+        });
+        if (!stems.length) { toast('No clips to render', 'warn'); return; }
+        const zip = await NB.Wav.zip(stems.map((s) => ({ name: s.name, blob: s.blob })));
+        NB.Wav.download(zip, `${slug(NB.Project.name)}-stems.zip`);
+        toast(`${stems.length} stems in ${((performance.now() - t0) / 1000).toFixed(1)}s`, 'ok', 3200);
+      } catch (err) {
+        console.error(err);
+        toast('Stem export failed: ' + err.message, 'err', 4000);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = label;
+      }
+    },
+
     /* ----------------------------------------------------------- keyboard */
     wireKeyboard() {
       document.addEventListener('keydown', (e) => {
@@ -4334,7 +4826,7 @@ select{cursor:pointer;}
   ];
 
   const App = {
-    version: '1.1.1',
+    version: '1.2.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');
@@ -4343,34 +4835,96 @@ select{cursor:pointer;}
         if (text) msg.textContent = text;
       };
 
+      const T = { start: performance.now() };
+      const mark = (k) => { T[k] = Math.round(performance.now() - T.start); };
+      let hydrated = 0;
       set(4, 'starting audio engine…');
       NB.Engine = new NB.AudioEngine();
       const E = NB.Engine;
 
-      /* ---------- synthesise the library, four renders at a time ---------- */
-      set(8, 'synthesising loop library…');
-      const total = LOOP_MANIFEST.length;
-      let done = 0;
-      const queue = LOOP_MANIFEST.slice();
-      const workers = Array.from({ length: 6 }, async () => {
-        while (queue.length) {
-          const [name, category, fn] = queue.shift();
+      mark('engine');
+
+      /* ---------- which loops matter first ----------
+         The demo beat and the first screenful of pads only need these. They are
+         hydrated from cache (or synthesised) before the veil lifts; everything
+         else arrives in the background. */
+      const PRIORITY = new Set(['boomBapKick', 'boomBapSnareClap', 'hatRoll', 'bassline808',
+        'stabLoop', 'arpPluckLoop', 'vinylCrackle', 'crashOneShot',
+        'scratchOneShot', 'trapKickPattern', 'fourOnFloorKick', 'trapSnareGhosts',
+        'rimshotPattern', 'trapHatRolls']);
+
+      const idOf = (fn) => 'loop_' + fn;
+      const register = (name, category, fn, i, buffer, beats) => {
+        NB.Library.register({
+          id: idOf(fn), name, buffer, category,
+          color: NB.util.TRACK_COLORS[i % NB.util.TRACK_COLORS.length],
+          beats,
+        });
+      };
+      const hydrateRows = (rows) => {
+        let n = 0;
+        LOOP_MANIFEST.forEach(([name, category, fn], i) => {
+          if (NB.Library.has(idOf(fn))) return;
+          const row = rows.get(NB.LoopCache.key(idOf(fn)));
+          if (!row) return;
           try {
-            const { buffer, beats } = await NB.Synth[fn].call(NB.Synth);
-            NB.Library.register({
-              id: 'loop_' + fn,
-              name, buffer, category,
-              color: NB.util.TRACK_COLORS[done % NB.util.TRACK_COLORS.length],
-              beats,
-            });
-          } catch (err) {
-            console.error('loop failed:', name, err);
-          }
-          done++;
-          set(8 + (done / total) * 74, `synthesised ${done}/${total} · ${name}`);
+            register(name, category, fn, i, NB.LoopCache.hydrate(row, E.ctx), row.beats);
+            n++;
+          } catch (err) { /* corrupt row: it will be re-synthesised */ }
+        });
+        return n;
+      };
+
+      const renderOne = async ([name, category, fn], i) => {
+        if (NB.Library.has(idOf(fn))) return;
+        try {
+          const { buffer, beats } = await NB.Synth[fn].call(NB.Synth);
+          register(name, category, fn, i, buffer, beats);
+          NB.LoopCache.put(idOf(fn), buffer, beats);   // fire and forget
+        } catch (err) {
+          console.error('loop failed:', name, err);
         }
-      });
-      await Promise.all(workers);
+      };
+
+      const runQueue = async (queue, workers) => {
+        const q = queue.slice();
+        await Promise.all(Array.from({ length: workers }, async () => {
+          while (q.length) {
+            const [entry, i] = q.shift();
+            await renderOne(entry, i);
+            done++;
+            set(12 + (done / Math.max(1, totalPending)) * 72, `synthesising ${entry[0]}…`);
+          }
+        }));
+      };
+
+      const allEntries = LOOP_MANIFEST.map((entry, i) => [entry, i]);
+      let done = 0;
+      let totalPending = 0;
+
+      /* ---------- storage, then the priority slice ---------- */
+      set(8, 'restoring rendered loops…');
+      try {
+        await NB.Persistence.open();
+        const priorityNames = LOOP_MANIFEST
+          .filter(([, , fn]) => PRIORITY.has(fn))
+          .map(([, , fn]) => idOf(fn));
+        const rows = await NB.LoopCache.many(priorityNames);
+        hydrated = hydrateRows(rows);
+      } catch (err) {
+        console.warn('storage unavailable — loops will render every boot', err);
+      }
+      mark('storage');
+
+      const phase1 = allEntries.filter(([e]) => PRIORITY.has(e[2]) && !NB.Library.has(idOf(e[2])));
+      const phase2 = allEntries.filter(([e]) => !PRIORITY.has(e[2]) && !NB.Library.has(idOf(e[2])));
+      totalPending = phase1.length + phase2.length;
+
+      if (hydrated) set(12, `${hydrated} loops restored from cache`);
+      await runQueue(phase1, 6);
+      mark('phase1');
+      Object.assign(T, { hydrated, phase1: phase1.length, phase2: phase2.length });
+      App.timings = T;   // live reference: later marks keep landing in it
 
       /* ---------- project + UI ---------- */
       set(86, 'building the workspace…');
@@ -4383,12 +4937,12 @@ select{cursor:pointer;}
       NB.Fx.mount(document.createElement('div'));
       NB.Inspector.mount($('#inspector'));
       NB.Shell.init();
+      mark('ui');
 
       /* ---------- restore ---------- */
       set(94, 'looking for your last session…');
       let restored = false;
       try {
-        await NB.Persistence.open();
         restored = await NB.Persistence.load(E);
       } catch (err) {
         console.warn('storage unavailable — autosave off', err);
@@ -4412,16 +4966,35 @@ select{cursor:pointer;}
         setTimeout(() => toast('Demo beat loaded — press space to play', 'ok', 3600), 700);
       }
 
+      mark('restore');
       NB.Shell.syncLoopBtn();
       NB.Shell.openDrawer('mixer');
 
+      /* ---------- the rest of the library, after the veil lifts ---------- */
+      if (phase2.length) {
+        setTimeout(async () => {
+          let more = 0;
+          try { more = hydrateRows(await NB.LoopCache.all()); } catch (e) {}
+          if (more) { NB.bus.emit('library:changed'); NB.Pads.render(); }
+          const stillMissing = allEntries.filter(([e]) => !NB.Library.has(idOf(e[2])));
+          if (stillMissing.length) {
+            totalPending = stillMissing.length; done = 0;
+            await runQueue(stillMissing, 3);
+            NB.bus.emit('library:changed');
+            NB.Pads.render();
+          }
+          mark('phase2');
+        }, 40);
+      }
+
+      mark('ready');
       set(100, 'ready');
       setTimeout(() => {
         $('#boot').classList.add('done');
-        setTimeout(() => { $('#boot').style.display = 'none'; }, 400);
+        setTimeout(() => { $('#boot').style.display = 'none'; }, 320);
         NB.Timeline.resize();
         if (restored) toast('Restored your last session', '', 2200);
-      }, 120);
+      }, 60);
 
       window.addEventListener('beforeunload', () => { NB.Persistence.save(); });
 

@@ -290,6 +290,35 @@
             ctx.restore();
           }
 
+          /* fades: a translucent wedge showing what the envelope does */
+          const fadeInPx = Math.min(w, (clip.fadeIn || 0) * px);
+          const fadeOutPx = Math.min(w, (clip.fadeOut || 0) * px);
+          if (fadeInPx > 1) {
+            ctx.fillStyle = 'rgba(0,0,0,.42)';
+            ctx.beginPath();
+            ctx.moveTo(x, y + h); ctx.lineTo(x, y + 13); ctx.lineTo(x + fadeInPx, y + 13);
+            ctx.closePath(); ctx.fill();
+          }
+          if (fadeOutPx > 1) {
+            ctx.fillStyle = 'rgba(0,0,0,.42)';
+            ctx.beginPath();
+            ctx.moveTo(x + w, y + h); ctx.lineTo(x + w, y + 13); ctx.lineTo(x + w - fadeOutPx, y + 13);
+            ctx.closePath(); ctx.fill();
+          }
+
+          /* pitch / reverse badge */
+          const pitch = clip.pitch || 0;
+          if ((pitch !== 0 || clip.reverse) && w > 46) {
+            const tag = (clip.reverse ? '⏪' : '') + (pitch !== 0 ? (pitch > 0 ? '+' : '') + pitch : '');
+            ctx.font = '700 8.5px ui-monospace,Menlo,monospace';
+            const tw = ctx.measureText(tag).width + 8;
+            ctx.fillStyle = 'rgba(8,10,12,.78)';
+            roundRect(ctx, x + w - tw - 3, y + 2.5, tw, 10, 3);
+            ctx.fill();
+            ctx.fillStyle = '#ffd479';
+            ctx.fillText(tag, x + w - tw + 1, y + 10.5);
+          }
+
           /* border / selection */
           roundRect(ctx, x + .5, y + .5, w - 1, h - 1, 5);
           ctx.lineWidth = sel ? 2 : 1;
@@ -473,11 +502,16 @@
           this.drag = { type: 'move', clip: hit.clip, startX: x, origStart: hit.clip.startSix, origTrack: hit.track.id, moved };
         }
 
-        /* long-press → clip actions */
+        /* long-press → clip actions. The timer is only a convenience: onUp
+           re-checks the elapsed time, so a starved timer (heavy render, slow
+           device) still opens the sheet instead of silently doing nothing. */
+        const pressStart = performance.now();
+        this._pressStart = pressStart;
         clearTimeout(this.longPressTimer);
         this.longPressTimer = setTimeout(() => {
           if (this.drag && !this.drag.moved.v) {
             this.drag = null;
+            this._pressStart = 0;
             haptic(14);
             NB.Shell.openClipSheet(this.selectedClipId);
           }
@@ -536,6 +570,14 @@
         function onUp() {
           const self = Timeline;
           clearTimeout(self.longPressTimer);
+          const held = self._pressStart ? performance.now() - self._pressStart : 0;
+          self._pressStart = 0;
+          if (held > 450 && self.drag && !self.drag.moved.v) {
+            self.drag = null;
+            haptic(14);
+            NB.Shell.openClipSheet(self.selectedClipId);
+            return;
+          }
           c.removeEventListener('pointermove', onMove);
           if (self.drag && self.drag.moved.v) {
             self.draw();

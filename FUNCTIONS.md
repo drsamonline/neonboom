@@ -96,6 +96,14 @@ track meters and the mixer meters. Replaced three `setInterval` timers. ✅
 | `Scenes.apply(scene)` | Swaps tracks/bpm/loop and re-anchors the transport | ✅ |
 | `Scenes.remove/rename/get` | Scene management | ✅ |
 
+## 2h. Time-stretch — `src/audio/stretch.js`
+
+| Function | What it does | Status |
+|---|---|---|
+| `Stretch.stretchBuffer(buffer, ratio)` | WSOLA: 1024-sample frames, 50 % overlap, ±192-sample similarity search (coarse 8, fine 2) | ✅ |
+| `Stretch.forSample(sample, ratio)` | Cached stretch, 24 entries, identity at ratio 1 | ✅ |
+| `Schedule.stretchRatio(clip, sample, bpm)` | 1 normally, `bpm/refBpm` when tempo-fit is on | ✅ |
+
 ## 3. Synthesis — `src/audio/synth.js`
 
 27 generators, each rendering an `AudioBuffer` offline at 90 BPM and declaring its musical

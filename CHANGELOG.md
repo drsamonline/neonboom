@@ -5,6 +5,32 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.4.0] — 2026-11-11
+
+WSOLA time-stretch: fit a loop to the tempo without transposing it.
+
+### Added
+- **Tempo-fit per clip** (inspector → *Sound → Fit tempo*, or the clip sheet). With it on, tempo
+  sync is done by **WSOLA** (waveform-similarity overlap-add) instead of `playbackRate`, so a
+  90 BPM loop plays at 92 BPM at its original pitch. The Pitch knob then only changes pitch.
+- `src/audio/stretch.js` — pure Float32Array maths, so the live context and the offline export use
+  the same code path, with a per-ratio cache (24 entries).
+
+### Measured
+| | |
+|---|---|
+| Length at ratio 2 | exactly 2.000× |
+| Pitch (440 Hz sine in) | 441 Hz out — 0.2 % |
+| Peak | 0.60 in, 0.60 out (no overlap-add runaway) |
+| Cost | ~96 ms for a 2 s buffer, cached after |
+
+### Changed
+- `Schedule.rate()` now returns the pitch-only rate when `stretch` is on, and
+  `Schedule.stretchRatio()` says how much longer the buffer must be. Trim offsets and durations are
+  scaled by that ratio so a stretched clip still occupies its musical length on the timeline.
+
+---
+
 ## [2.3.0] — 2026-11-11
 
 Scenes — save a section, switch to it live.

@@ -481,6 +481,7 @@
         <div class="sheetRow"><label>Length</label><span style="font-family:var(--mono);font-size:11px">${Grid.fmtBars(clip.trimEndSix - clip.trimStartSix)}</span></div>
         <div class="sheetBtns">
           <button class="btn" id="csEdit">Edit waveform…</button>
+          <button class="btn ${clip.stretch ? 'on' : ''}" id="csStretch">${clip.stretch ? '✓ Tempo-fit' : 'Fit tempo'}</button>
           <button class="btn" id="csRev">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
           <button class="btn" id="csDup">Duplicate</button>
           <button class="btn" id="csSplit">Split here</button>
@@ -509,6 +510,13 @@
         $('#' + id, s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
       });
       $('#csEdit', s).addEventListener('click', () => { this.closeSheet(); this.openClipEditor(clip.id); });
+      $('#csStretch', s).addEventListener('click', (e) => {
+        NB.History.push(clip.stretch ? 'Tempo-fit off' : 'Tempo-fit on');
+        clip.stretch = !clip.stretch;
+        e.currentTarget.classList.toggle('on', clip.stretch);
+        e.currentTarget.textContent = clip.stretch ? '✓ Tempo-fit' : 'Fit tempo';
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+      });
       $('#csRev', s).addEventListener('click', (e) => {
         NB.History.push();
         clip.reverse = !clip.reverse;

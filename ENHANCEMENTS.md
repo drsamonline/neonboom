@@ -99,8 +99,8 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
 Everything in the "cheap" column is now done except **#36** (roving-tabindex keyboard nav).
-What is left: **#34 WSOLA time-stretch** (large), plus code signing (#46/#47), a docs site
-(#52) and i18n (#51). The musical surface is complete.
+Everything in the musical roadmap is shipped. What is left is release plumbing: code signing
+(#46/#47), a generated docs site (#52) and i18n (#51).
 
 ---
 

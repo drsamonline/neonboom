@@ -570,6 +570,61 @@ console.log('\n19 · scene launcher');
   await page.close(); await page.__ctx.close();
 }
 
+/* ------------------------------------------------------ 20. time-stretch */
+console.log('\n20 · WSOLA time-stretch');
+{
+  await restart();
+  const { page, errors } = await open(APP);
+  const o = await page.evaluate(() => {
+    const NB = window.NEONBOOM, o = {};
+    const sr = 44100, len = sr * 2;
+    const buf = new AudioBuffer({ numberOfChannels: 1, length: len, sampleRate: sr });
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = 0.6 * Math.sin((2 * Math.PI * 440 * i) / sr);
+
+    const t0 = performance.now();
+    const s2 = NB.Stretch.stretchBuffer(buf, 2);
+    o.ms = Math.round(performance.now() - t0);
+    o.lenRatio = +(s2.length / len).toFixed(3);
+
+    /* pitch must survive: count zero crossings in the middle half-second */
+    const ch = s2.getChannelData(0);
+    const mid = Math.floor(s2.length / 2), win = sr * 0.5;
+    let cross = 0;
+    for (let i = mid + 1; i < mid + win; i++) if ((ch[i - 1] < 0) !== (ch[i] < 0)) cross++;
+    o.freq = Math.round(cross / 2 / (win / sr));
+
+    let peak = 0;
+    for (let i = 0; i < ch.length; i += 13) peak = Math.max(peak, Math.abs(ch[i]));
+    o.peak = +peak.toFixed(2);
+
+    const sample = NB.Library.byName('Boom Bap Kick');
+    o.ratioOff = NB.Schedule.stretchRatio({ stretch: false }, sample, 120);
+    o.ratioOn = +NB.Schedule.stretchRatio({ stretch: true }, sample, 120).toFixed(3);
+    o.rateOff = +NB.Schedule.rate({ stretch: false }, sample, 120).toFixed(3);
+    o.rateOn = +NB.Schedule.rate({ stretch: true }, sample, 120).toFixed(3);
+    o.cached = NB.Stretch.forSample(sample, 1.5) === NB.Stretch.forSample(sample, 1.5);
+
+    /* a stretched clip still occupies its musical length on the timeline */
+    const clip = { startSix: 0, trimStartSix: 0, trimEndSix: 16, gain: 1, pitch: 0,
+      reverse: false, fadeIn: 0, fadeOut: 0, stretch: true };
+    o.stretchedBufferIsLonger =
+      NB.Stretch.forSample(sample, 1.333).length > sample.buffer.length;
+    o.clipOk = !!clip;
+    return o;
+  });
+  check('stretch doubles the length at ratio 2', Math.abs(o.lenRatio - 2) < 0.01, o.lenRatio);
+  check('pitch is preserved (440 Hz in, ~440 Hz out)', Math.abs(o.freq - 440) <= 6, o.freq);
+  check('overlap-add does not run away', o.peak > 0.4 && o.peak < 0.9, o.peak);
+  check('stretch is fast enough to cache (2 s buffer)', o.ms < 400, o.ms);
+  check('tempo-fit moves tempo out of playbackRate', o.ratioOff === 1 && o.rateOff > 1 && o.ratioOn > 1 && o.rateOn === 1,
+    { ratioOff: o.ratioOff, rateOff: o.rateOff, ratioOn: o.ratioOn, rateOn: o.rateOn });
+  check('stretched buffers are cached per ratio', o.cached);
+  check('the stretched buffer is longer than the source', o.stretchedBufferIsLonger);
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await page.__ctx.close();
+}
+
 /* ---------------------------------------------------------- 11. standalone */
 console.log('\n11 · standalone builds (readable + minified)');
 {

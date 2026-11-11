@@ -102,9 +102,14 @@
           <span class="val">${clip.fadeOut || 0}/16</span></div>
         <div class="grid2" style="margin-top:4px">
           <button class="btn ${clip.reverse ? 'on' : ''}" id="clipReverse">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
+          <button class="btn ${clip.stretch ? 'on' : ''}" id="clipStretch">${clip.stretch ? '✓ Tempo-fit' : 'Fit tempo'}</button>
+        </div>
+        <div class="grid2" style="margin-top:6px">
           <button class="btn" id="clipReset">Reset</button>
         </div>
-        <p style="font-size:10.5px;color:var(--ink-2);margin:8px 0 0">Pitch is sampler-style: it changes speed with the pitch, like a turntable.</p>`;
+        <p style="font-size:10.5px;color:var(--ink-2);margin:8px 0 0">${clip.stretch
+          ? 'Tempo-fit: the loop is time-stretched to the project tempo, so pitch stays put. The Pitch knob then only changes pitch.'
+          : 'Pitch is sampler-style: it changes speed with the pitch, like a turntable. Turn on Tempo-fit to keep the pitch.'}</p>`;
       const fmtPitch = (v) => (v > 0 ? '+' : '') + v + ' st';
       sound.querySelectorAll('input[data-k]').forEach((inp) => {
         const k = inp.dataset.k;
@@ -123,9 +128,17 @@
         e.currentTarget.textContent = clip.reverse ? '⏪ Reversed' : '⏩ Reverse';
         NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
       });
+      sound.querySelector('#clipStretch').addEventListener('click', (e) => {
+        NB.History.push(clip.stretch ? 'Tempo-fit off' : 'Tempo-fit on');
+        clip.stretch = !clip.stretch;
+        e.currentTarget.classList.toggle('on', clip.stretch);
+        e.currentTarget.textContent = clip.stretch ? '✓ Tempo-fit' : 'Fit tempo';
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+        this.render();
+      });
       sound.querySelector('#clipReset').addEventListener('click', () => {
         NB.History.push();
-        clip.pitch = 0; clip.reverse = false; clip.fadeIn = 0; clip.fadeOut = 0; clip.gain = 1;
+        clip.pitch = 0; clip.reverse = false; clip.fadeIn = 0; clip.fadeOut = 0; clip.gain = 1; clip.stretch = false;
         NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
         this.render();
       });

@@ -1772,10 +1772,18 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   const { Grid } = NB.util;
 
   const Schedule = {
-    /* playbackRate for a clip at the current project tempo and pitch */
+    /* Playback rate for a clip.
+       Default: tape-speed sync (tempo and pitch together), which is what a
+       sampler does. With `stretch` on, the tempo part is handled by WSOLA and
+       the rate only carries the pitch, so the loop fits the beat untransposed. */
     rate(clip, sample, bpm) {
-      const pitch = clip.pitch || 0;
-      return (bpm / sample.refBpm) * Math.pow(2, pitch / 12);
+      const pitch = Math.pow(2, (clip.pitch || 0) / 12);
+      return clip.stretch ? pitch : (bpm / sample.refBpm) * pitch;
+    },
+
+    /* How much longer the buffer must be to cover the same musical span. */
+    stretchRatio(clip, sample, bpm) {
+      return clip.stretch ? bpm / sample.refBpm : 1;
     },
 
     /* Swing delays every second sixteenth. 0 = straight, 0.5 ≈ 2:1 shuffle. */
@@ -1807,11 +1815,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
       const rate = this.rate(clip, sample, bpm);
       const reverse = !!clip.reverse;
-      const buffer = reverse ? NB.project.reversedBuffer(sample) : sample.buffer;
+      const ratio = this.stretchRatio(clip, sample, bpm);
+      let buffer = reverse ? NB.project.reversedBuffer(sample) : sample.buffer;
+      if (ratio !== 1 && NB.Stretch) buffer = NB.Stretch.forSample(sample, ratio);
 
       /* buffer offset is in SOURCE time (the sample's own tempo) */
-      let bufOffset = ((trimIn + skipSix) / 4) * (60 / sample.refBpm);
-      let durSec = (durSix / 4) * (60 / sample.refBpm);
+      let bufOffset = ((trimIn + skipSix) / 4) * (60 / sample.refBpm) * ratio;
+      let durSec = (durSix / 4) * (60 / sample.refBpm) * ratio;
       if (reverse) {
         bufOffset = Math.max(0, buffer.duration - (bufOffset + durSec));
         if (bufOffset + durSec > buffer.duration) durSec = Math.max(0.001, buffer.duration - bufOffset);
@@ -1854,6 +1864,133 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   };
 
   NB.Schedule = Schedule;
+})(window.NB = window.NB || {});
+
+</script>
+<script>
+/* =========================================================================
+   NEONBOOM · audio/stretch.js
+   WSOLA (waveform-similarity overlap-add) time stretching.
+
+   Used for one thing: fitting a loop to the project tempo *without* changing
+   its pitch. Tempo sync normally rides on `playbackRate`, which is a tape
+   speed change — correct for a sampler, wrong when you just want a 90 BPM loop
+   to sit at 92 BPM.
+
+   Pure Float32Array maths, so it works identically in the live context and in
+   the offline export, and needs no AudioWorklet.
+   ========================================================================= */
+(function (NB) {
+  'use strict';
+
+  const FRAME = 1024;          // analysis/synthesis frame
+  const HOP = FRAME / 2;       // synthesis hop
+  const SEARCH = 192;          // ± samples of similarity search
+  const COARSE = 8;            // first pass step
+  const FINE = 2;              // refinement step
+
+  function hann(n) {
+    const w = new Float32Array(n);
+    for (let i = 0; i < n; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1));
+    return w;
+  }
+  const WINDOW = hann(FRAME);
+
+  /* Best offset near `target` whose first HOP samples match `ref` best. */
+  function bestOffset(src, target, ref, limit) {
+    let best = 0;
+    let bestScore = -Infinity;
+
+    const score = (off) => {
+      const p = target + off;
+      if (p < 0 || p + HOP > limit) return -Infinity;
+      let s = 0;
+      for (let i = 0; i < HOP; i += 2) s += src[p + i] * ref[i];   // every 2nd sample is plenty
+      return s;
+    };
+
+    for (let off = -SEARCH; off <= SEARCH; off += COARSE) {
+      const s = score(off);
+      if (s > bestScore) { bestScore = s; best = off; }
+    }
+    const coarse = best;
+    for (let off = coarse - COARSE; off <= coarse + COARSE; off += FINE) {
+      const s = score(off);
+      if (s > bestScore) { bestScore = s; best = off; }
+    }
+    return best;
+  }
+
+  /**
+   * Stretch `buffer` so it plays `ratio` times slower (ratio > 1 = longer).
+   * Pitch is preserved: the output is overlap-added, not resampled.
+   */
+  function stretchBuffer(buffer, ratio) {
+    const r = Math.max(0.25, Math.min(4, ratio));
+    const sr = buffer.sampleRate;
+    const inLen = buffer.length;
+    const outLen = Math.max(FRAME, Math.round(inLen * r));
+    const out = new AudioBuffer({
+      numberOfChannels: buffer.numberOfChannels,
+      length: outLen,
+      sampleRate: sr,
+    });
+
+    const hopA = HOP / r;          // analysis hop
+
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const src = buffer.getChannelData(ch);
+      const dst = out.getChannelData(ch);
+      let prevRef = new Float32Array(HOP);     // tail of the last frame we wrote
+      let inPos = 0;
+      let outPos = 0;
+
+      while (outPos + FRAME < outLen && inPos + FRAME < inLen) {
+        const off = bestOffset(src, Math.round(inPos), prevRef, inLen);
+        const p = Math.max(0, Math.min(inLen - FRAME, Math.round(inPos) + off));
+
+        for (let i = 0; i < FRAME; i++) dst[outPos + i] += src[p + i] * WINDOW[i];
+
+        /* reference for the next search: the natural continuation of this frame */
+        for (let i = 0; i < HOP; i++) {
+          prevRef[i] = src[Math.min(inLen - 1, p + HOP + i)];
+        }
+
+        inPos += hopA;
+        outPos += HOP;
+      }
+
+      /* normalise the overlap-add ripples (Hann at 50 % overlap sums to ~1) */
+      for (let i = 0; i < outLen; i++) {
+        if (dst[i] > 1.6 || dst[i] < -1.6) dst[i] = Math.max(-1, Math.min(1, dst[i]));
+      }
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------------- caching */
+  const cache = new Map();          // key → AudioBuffer
+  const CACHE_LIMIT = 24;
+
+  function keyFor(sample, ratio) {
+    return `${sample.id}@${ratio.toFixed(3)}`;
+  }
+
+  /** Cached stretch, so a loop is only ever stretched once per ratio. */
+  function forSample(sample, ratio) {
+    if (!sample || Math.abs(ratio - 1) < 0.005) return sample.buffer;
+    const key = keyFor(sample, ratio);
+    if (cache.has(key)) return cache.get(key);
+
+    const stretched = stretchBuffer(sample.buffer, ratio);
+    cache.set(key, stretched);
+    if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
+    return stretched;
+  }
+
+  function clearCache() { cache.clear(); }
+
+  NB.Stretch = { stretchBuffer, forSample, clearCache, FRAME, HOP };
 })(window.NB = window.NB || {});
 
 </script>
@@ -2197,7 +2334,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     const lengthSix = Math.max(1, Math.round((s ? s.beats : 1) * 4));
     return { id: uid('clp'), sampleId, trackId, startSix,
       lengthSix, trimStartSix: 0, trimEndSix: lengthSix, gain: 1,
-      pitch: 0, reverse: false, fadeIn: 0, fadeOut: 0 };
+      pitch: 0, reverse: false, fadeIn: 0, fadeOut: 0, stretch: false };
   }
 
   /* Older projects (and the demo builder) create clips by hand, so normalise
@@ -2208,6 +2345,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     c.reverse = !!c.reverse;
     c.fadeIn = c.fadeIn || 0;
     c.fadeOut = c.fadeOut || 0;
+    c.stretch = !!c.stretch;
     return c;
   }
 
@@ -2612,6 +2750,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
           startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
           gain: c.gain, pitch: c.pitch, reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut,
+          stretch: c.stretch,
         })),
       })),
     };
@@ -2641,7 +2780,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         return normaliseClip({ id: uid('clp'), sampleId: s.id, trackId: track.id, startSix: c.startSix,
           lengthSix: c.trimEndSix - c.trimStartSix, trimStartSix: c.trimStartSix,
           trimEndSix: c.trimEndSix, gain: c.gain, pitch: c.pitch,
-          reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut });
+          reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut, stretch: c.stretch });
       }).filter(Boolean);
       return track;
     });
@@ -5299,9 +5438,14 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           <span class="val">${clip.fadeOut || 0}/16</span></div>
         <div class="grid2" style="margin-top:4px">
           <button class="btn ${clip.reverse ? 'on' : ''}" id="clipReverse">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
+          <button class="btn ${clip.stretch ? 'on' : ''}" id="clipStretch">${clip.stretch ? '✓ Tempo-fit' : 'Fit tempo'}</button>
+        </div>
+        <div class="grid2" style="margin-top:6px">
           <button class="btn" id="clipReset">Reset</button>
         </div>
-        <p style="font-size:10.5px;color:var(--ink-2);margin:8px 0 0">Pitch is sampler-style: it changes speed with the pitch, like a turntable.</p>`;
+        <p style="font-size:10.5px;color:var(--ink-2);margin:8px 0 0">${clip.stretch
+          ? 'Tempo-fit: the loop is time-stretched to the project tempo, so pitch stays put. The Pitch knob then only changes pitch.'
+          : 'Pitch is sampler-style: it changes speed with the pitch, like a turntable. Turn on Tempo-fit to keep the pitch.'}</p>`;
       const fmtPitch = (v) => (v > 0 ? '+' : '') + v + ' st';
       sound.querySelectorAll('input[data-k]').forEach((inp) => {
         const k = inp.dataset.k;
@@ -5320,9 +5464,17 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         e.currentTarget.textContent = clip.reverse ? '⏪ Reversed' : '⏩ Reverse';
         NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
       });
+      sound.querySelector('#clipStretch').addEventListener('click', (e) => {
+        NB.History.push(clip.stretch ? 'Tempo-fit off' : 'Tempo-fit on');
+        clip.stretch = !clip.stretch;
+        e.currentTarget.classList.toggle('on', clip.stretch);
+        e.currentTarget.textContent = clip.stretch ? '✓ Tempo-fit' : 'Fit tempo';
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+        this.render();
+      });
       sound.querySelector('#clipReset').addEventListener('click', () => {
         NB.History.push();
-        clip.pitch = 0; clip.reverse = false; clip.fadeIn = 0; clip.fadeOut = 0; clip.gain = 1;
+        clip.pitch = 0; clip.reverse = false; clip.fadeIn = 0; clip.fadeOut = 0; clip.gain = 1; clip.stretch = false;
         NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
         this.render();
       });
@@ -5958,6 +6110,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         <div class="sheetRow"><label>Length</label><span style="font-family:var(--mono);font-size:11px">${Grid.fmtBars(clip.trimEndSix - clip.trimStartSix)}</span></div>
         <div class="sheetBtns">
           <button class="btn" id="csEdit">Edit waveform…</button>
+          <button class="btn ${clip.stretch ? 'on' : ''}" id="csStretch">${clip.stretch ? '✓ Tempo-fit' : 'Fit tempo'}</button>
           <button class="btn" id="csRev">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
           <button class="btn" id="csDup">Duplicate</button>
           <button class="btn" id="csSplit">Split here</button>
@@ -5986,6 +6139,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         $('#' + id, s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
       });
       $('#csEdit', s).addEventListener('click', () => { this.closeSheet(); this.openClipEditor(clip.id); });
+      $('#csStretch', s).addEventListener('click', (e) => {
+        NB.History.push(clip.stretch ? 'Tempo-fit off' : 'Tempo-fit on');
+        clip.stretch = !clip.stretch;
+        e.currentTarget.classList.toggle('on', clip.stretch);
+        e.currentTarget.textContent = clip.stretch ? '✓ Tempo-fit' : 'Fit tempo';
+        NB.Timeline.draw(); NB.Transport.refresh(); NB.Persistence.saveSoon();
+      });
       $('#csRev', s).addEventListener('click', (e) => {
         NB.History.push();
         clip.reverse = !clip.reverse;
@@ -6681,7 +6841,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '2.3.0',
+    version: '2.4.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

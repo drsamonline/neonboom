@@ -89,7 +89,7 @@
     const lengthSix = Math.max(1, Math.round((s ? s.beats : 1) * 4));
     return { id: uid('clp'), sampleId, trackId, startSix,
       lengthSix, trimStartSix: 0, trimEndSix: lengthSix, gain: 1,
-      pitch: 0, reverse: false, fadeIn: 0, fadeOut: 0 };
+      pitch: 0, reverse: false, fadeIn: 0, fadeOut: 0, stretch: false };
   }
 
   /* Older projects (and the demo builder) create clips by hand, so normalise
@@ -100,6 +100,7 @@
     c.reverse = !!c.reverse;
     c.fadeIn = c.fadeIn || 0;
     c.fadeOut = c.fadeOut || 0;
+    c.stretch = !!c.stretch;
     return c;
   }
 
@@ -504,6 +505,7 @@
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
           startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
           gain: c.gain, pitch: c.pitch, reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut,
+          stretch: c.stretch,
         })),
       })),
     };
@@ -533,7 +535,7 @@
         return normaliseClip({ id: uid('clp'), sampleId: s.id, trackId: track.id, startSix: c.startSix,
           lengthSix: c.trimEndSix - c.trimStartSix, trimStartSix: c.trimStartSix,
           trimEndSix: c.trimEndSix, gain: c.gain, pitch: c.pitch,
-          reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut });
+          reverse: c.reverse, fadeIn: c.fadeIn, fadeOut: c.fadeOut, stretch: c.stretch });
       }).filter(Boolean);
       return track;
     });

@@ -1,6 +1,6 @@
 {
   "name": "neonboom",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Offline-first beat workstation that runs in a browser tab: procedural loop library, pad grid, canvas arrangement, mixer, master FX and WAV export. Zero dependencies.",
   "private": true,
   "type": "module",
@@ -36,6 +36,7 @@
     "test:pack": "node tests/pack.mjs"
   },
   "devDependencies": {
-    "puppeteer-core": "^23.0.0"
+    "puppeteer-core": "^23.0.0",
+    "terser": "^5.51.2"
   }
 }

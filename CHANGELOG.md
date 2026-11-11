@@ -5,6 +5,25 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.9.0] — 2026-11-11
+
+Two builds, one source. The size trend gets a real answer instead of another raised limit.
+
+### Added
+- **`dist/neonboom.min.html`** — the same single file, minified: **275 KB → 177 KB (−35 %)**.
+  JS through terser, CSS through a conservative minifier (comments and whitespace only — no
+  rewriting), produced *from* the readable build so the two cannot drift.
+- Both files are attached to every release, both are served by Pages, and both are booted by the
+  test suite (library, transport, stylesheet, zero failed requests, zero console errors).
+
+### Changed
+- `scripts/build-standalone.mjs` emits both files in one pass.
+- CI budgets are now split: **200 KB** for the minified file people download, 320 KB for the
+  readable source. The tripwire finally measures the thing that matters.
+- `terser` is a **dev** dependency — the shipped app still has zero runtime dependencies.
+
+---
+
 ## [1.8.0] — 2026-11-11
 
 Automation lanes — the last big musical feature on the roadmap.

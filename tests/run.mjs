@@ -829,30 +829,48 @@ console.log('\n15 · automation lanes');
 }
 
 /* ---------------------------------------------------------- 11. standalone */
-console.log('\n11 · standalone single-file build');
+console.log('\n11 · standalone builds (readable + minified)');
 {
-  if (!fs.existsSync(path.join(ROOT, 'dist', 'neonboom.html'))) {
-    check('dist/neonboom.html exists (run npm run build)', false);
-  } else {
+  for (const file of ['neonboom.html', 'neonboom.min.html']) {
+    const full = path.join(ROOT, 'dist', file);
+    if (!fs.existsSync(full)) { check(`dist/${file} exists (run npm run build)`, false); continue; }
+
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
     await page.setViewport({ width: 1280, height: 800 });
     const errors = [], failed = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('requestfailed', (r) => failed.push(r.url()));
-    await page.goto(STANDALONE, { waitUntil: 'load' });
+    await page.goto('file://' + full, { waitUntil: 'load' });
     await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
-    await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
-    const o = await page.evaluate(() => ({
-      samples: window.NEONBOOM.Library.items.size,
-      pads: document.querySelectorAll('.pad').length,
-    }));
-    check('standalone build boots', o.samples === 27, o.samples);
-    check('standalone build has pads', o.pads === 27, o.pads);
-    check('standalone build makes no failed requests', failed.length === 0, failed.slice(0, 3));
-    check('standalone build has no console errors', errors.length === 0, errors.slice(0, 3));
-    await page.close();
-    await context.close();
+    await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 40000 }).catch(() => {});
+    const o = await page.evaluate(async () => {
+      const NB = window.NEONBOOM;
+      NB.Transport.play();
+      await new Promise((r) => setTimeout(r, 400));
+      const playing = NB.Transport.playing && NB.Transport.currentSix() > 0.1;
+      NB.Transport.pause();
+      return {
+        samples: NB.Library.items.size,
+        pads: document.querySelectorAll('.pad').length,
+        playing,
+        cssApplied: getComputedStyle(document.querySelector('#topbar')).backgroundImage !== 'none',
+      };
+    });
+    check(`${file}: boots with the full library`, o.samples === 27 && o.pads === 27, o);
+    check(`${file}: transport plays`, o.playing);
+    check(`${file}: stylesheet applied`, o.cssApplied);
+    check(`${file}: no failed requests`, failed.length === 0, failed.slice(0, 2));
+    check(`${file}: no console errors`, errors.length === 0, errors.slice(0, 2));
+    await page.close(); await context.close();
+  }
+
+  const size = (f) => fs.statSync(path.join(ROOT, 'dist', f)).size;
+  if (fs.existsSync(path.join(ROOT, 'dist', 'neonboom.min.html'))) {
+    const ratio = size('neonboom.min.html') / size('neonboom.html');
+    check('minified build is at least 25% smaller', ratio < 0.75, { ratio: +ratio.toFixed(2) });
+    check('minified build is under 200 KB', size('neonboom.min.html') < 204800, size('neonboom.min.html'));
   }
 }
 

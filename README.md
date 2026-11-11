@@ -11,11 +11,11 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.8.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.9.0-ffb020)](CHANGELOG.md)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
-[![Tests](https://img.shields.io/badge/headless_tests-155_assertions_passing-41d18a)](#testing)
+[![Tests](https://img.shields.io/badge/headless_tests-163_assertions_passing-41d18a)](#testing)
 [![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
 [![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
@@ -68,7 +68,8 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 
 | File | What it is |
 |---|---|
-| `neonboom.html` | The whole app in one ~192 KB file. Double-click it; runs offline from `file://`, zero network requests. |
+| `neonboom.min.html` | **177 KB** — the whole app in one file, minified. What you download and ship. Double-click it; runs offline from `file://`, zero network requests. |
+| `neonboom.html` | **275 KB** — the same app, readable. Same behaviour, unminified source for reading and debugging. |
 | `NEONBOOM.Setup.*.exe` | Windows installer (x64, NSIS) |
 | `NEONBOOM-*.dmg` | macOS (Intel and Apple Silicon) |
 | `NEONBOOM-*.AppImage` · `*.deb` | Linux portable and Debian/Ubuntu packages |
@@ -150,7 +151,7 @@ src/ui/fx.js               FX rack + snapshot() for export
 src/ui/inspector.js        context panel
 src/ui/shell.js            transport bar, drawer, sheets, keyboard, import/export
 src/app.js                 boot sequence
-scripts/build-standalone.mjs   inlines everything into dist/neonboom.html
+scripts/build-standalone.mjs   inlines everything into dist/neonboom.html + dist/neonboom.min.html
 electron/                  desktop wrapper (Windows / macOS / Linux)
 capacitor.config.json      Android wrapper
 .github/workflows/         Pages deploy, release builds, Android APK
@@ -169,9 +170,8 @@ capacitor.config.json      Android wrapper
 ## Development
 
 ```bash
-npm install                 # only for the headless test harness (puppeteer-core)
-npm run build               # → dist/neonboom.html
-node scripts/build-standalone.mjs
+npm install                 # dev only: puppeteer-core (tests) + terser (minified build)
+npm run build               # → dist/neonboom.html and dist/neonboom.min.html
 ```
 
 ### Testing
@@ -186,7 +186,7 @@ npm run build:pack             # re-renders pack/neonboom-pack-v1.zip from the s
 npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **155 assertions across three harnesses (131 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
+Latest run: **163 assertions across three harnesses (139 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
 
 ---
 

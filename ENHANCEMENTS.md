@@ -140,11 +140,11 @@ nav, **#58** minified build, and the distribution items (#46–#52).
 
 | # | Idea | Effort | Bloat |
 |---|---|---|---|
-| 58 | **Minified build** — `dist/neonboom.min.html` via terser (dev-only dependency), shipped alongside the readable one. Roughly 40 % off 264 KB | S | low |
+| 58 | ~~Minified build~~ — **shipped in 1.9.0**: 275 KB → **177 KB**, both files shipped and tested | — | — |
 | 59 | Move the 27 loop generators into a lazily-fetched module so the core file only carries the engine | M | med |
 
-The single file is 264 KB and grows ~10 KB per feature release. The tripwire in CI is 288 KB;
-the honest fix when it gets tight is #58, not a bigger number.
+Minification bought 98 KB, so the readable source can keep growing for a while. CI now budgets
+the **minified** file at 200 KB and the readable one at 320 KB.
 
 ## 6. Deliberately rejected (bloat control)
 

@@ -24,6 +24,7 @@ jobs:
         with:
           files: |
             dist/neonboom.html
+            dist/neonboom.min.html
             pack/neonboom-pack-v1.zip
             neonboom-source.zip
           generate_release_notes: true

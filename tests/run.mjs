@@ -39,6 +39,9 @@ async function open(url, { w = 1440, h = 900, mobile = false } = {}) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.evaluateOnNewDocument(() => {
+    try { localStorage.setItem('nb-onboarded', '1'); } catch (e) {}
+  });
   const t0 = Date.now();
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
@@ -712,6 +715,56 @@ console.log('\n14 · templates, multi-select, appearance');
   check('marquee selects clips', o.marquee > 20 && o.marqueeSel === o.marquee, { hits: o.marquee });
   check('colour-safe palette swaps track colours', o.paletteDiffers, { safe: o.safeColor, neon: o.neonColor });
   check('template picker lists every template', o.tplRows === 4, o.tplRows);
+
+  const extra = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, e = {};
+    e.frameFns = NB.util.Frame._fns.length;
+
+    const clip = NB.Project.tracks[0].clips[0];
+    NB.Timeline.select(clip.id);
+    NB.Shell.openClipEditor(clip.id);
+    await new Promise((r) => setTimeout(r, 120));
+    e.editorOpen = !!document.querySelector('#ceWave');
+    const end = clip.trimEndSix;
+    document.querySelector('#ceFit1').click();
+    e.fit1 = clip.trimEndSix === 16;
+    document.querySelector('#ceHalf').click();
+    e.half = clip.trimEndSix === 8;
+    document.querySelector('#ceNorm').click();
+    e.norm = clip.gain;
+    document.querySelector('#ceReset').click();
+    e.reset = clip.trimEndSix === end && clip.trimStartSix === 0;
+    document.querySelector('#ceDone').click();
+
+    NB.Transport.play();
+    await new Promise((r) => setTimeout(r, 160));
+    e.playing = document.querySelector('#announce').textContent;
+    NB.Transport.pause();
+    await new Promise((r) => setTimeout(r, 160));
+    e.paused = document.querySelector('#announce').textContent;
+    return e;
+  });
+  check('meters share one frame loop', extra.frameFns === 3, extra.frameFns);
+  check('clip editor opens on the waveform', extra.editorOpen);
+  check('fit 1 bar sets the trim', extra.fit1);
+  check('half length halves the trim', extra.half);
+  check('normalise sets a sensible gain', extra.norm > 0.3 && extra.norm <= 2, extra.norm);
+  check('reset restores the trim', extra.reset);
+  check('transport is announced to screen readers', extra.playing === 'Playing' && extra.paused === 'Paused', extra);
+
+  /* onboarding: a context that has never seen it */
+  {
+    const context = await browser.createBrowserContext();
+    const pg = await context.newPage();
+    await pg.setViewport({ width: 1280, height: 800 });
+    await pg.goto(APP, { waitUntil: 'load' });
+    await pg.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
+    const shown = await pg.waitForFunction("!!document.querySelector('#obDone')", { timeout: 6000 }).then(() => true).catch(() => false);
+    check('first run shows the three tips', shown);
+    await pg.evaluate(() => document.querySelector('#obDone').click());
+    check('tips are remembered', await pg.evaluate(() => localStorage.getItem('nb-onboarded') === '1'));
+    await pg.close(); await context.close();
+  }
   check('no console errors', errors.length === 0, errors.slice(0, 3));
   await page.close(); await page.__ctx.close();
 }

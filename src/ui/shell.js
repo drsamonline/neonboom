@@ -33,11 +33,12 @@
       this.buildVu();
       this.wireLcd();
 
-      NB.bus.on('transport', (s) => this.onTransport(s));
+      NB.bus.on('transport', (s) => { this.onTransport(s); this.announce(s.playing ? 'Playing' : 'Paused'); });
       NB.bus.on('playhead', () => this.updateLcd());
       NB.bus.on('saved', () => this.setSaved(true));
       NB.bus.on('saving', () => this.setSaved(false));
       NB.bus.on('loop', () => this.syncLoopBtn());
+      NB.bus.on('announce', (text) => this.announce(text));
       NB.bus.on('history', (s) => {
         $('#btnUndo').disabled = !s.canUndo;
         $('#btnRedo').disabled = !s.canRedo;
@@ -56,7 +57,7 @@
       $('#btnUndo').disabled = true;
       $('#btnRedo').disabled = true;
 
-      setInterval(() => this.updateVu(), 45);
+      NB.util.Frame.add(() => this.updateVu());
       /* per-frame work stays minimal: LCD text only. Meters run on a timer. */
       NB.Transport.onTick(() => this.updateLcd());
     },
@@ -112,6 +113,14 @@
         lastScroll = now;
         NB.Timeline.scrollToPlayhead();
       });
+    },
+
+    /* screen readers get the same feedback the eyes get */
+    announce(text) {
+      const el = $('#announce');
+      if (!el) return;
+      el.textContent = '';
+      setTimeout(() => { el.textContent = text; }, 30);
     },
 
     onTransport(s) {
@@ -462,6 +471,7 @@
         <div class="sheetRow"><label>Starts</label><span style="font-family:var(--mono);font-size:11px">${Grid.fmtBBT(clip.startSix)}</span></div>
         <div class="sheetRow"><label>Length</label><span style="font-family:var(--mono);font-size:11px">${Grid.fmtBars(clip.trimEndSix - clip.trimStartSix)}</span></div>
         <div class="sheetBtns">
+          <button class="btn" id="csEdit">Edit waveform…</button>
           <button class="btn" id="csRev">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
           <button class="btn" id="csDup">Duplicate</button>
           <button class="btn" id="csSplit">Split here</button>
@@ -489,6 +499,7 @@
         });
         $('#' + id, s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
       });
+      $('#csEdit', s).addEventListener('click', () => { this.closeSheet(); this.openClipEditor(clip.id); });
       $('#csRev', s).addEventListener('click', (e) => {
         NB.History.push();
         clip.reverse = !clip.reverse;
@@ -567,6 +578,33 @@
     },
 
     /* ------------------------------------------------------------ projects */
+    maybeOnboard() {
+      let seen = false;
+      try { seen = localStorage.getItem('nb-onboarded') === '1'; } catch (e) { seen = true; }
+      if (seen) return;
+      setTimeout(() => {
+        this.sheet(`
+          <h4>Three things to know</h4>
+          <div class="sheetRow"><label>Pads</label>
+            <span style="font-size:12px;color:var(--ink-1);flex:1">Tap a pad to hear it. Arm <b>REC</b> and taps drop clips at the playhead.</span></div>
+          <div class="sheetRow"><label>Timeline</label>
+            <span style="font-size:12px;color:var(--ink-1);flex:1">Drag clips to move, drag an edge to trim, shift-click or marquee to select several.</span></div>
+          <div class="sheetRow"><label>Save</label>
+            <span style="font-size:12px;color:var(--ink-1);flex:1">It autosaves in this browser. <b>Export</b> writes a WAV; the project file opens on another machine.</span></div>
+          <div class="sheetBtns">
+            <button class="btn" id="obTpl">Pick a template</button>
+            <button class="btn primary" id="obDone">Start</button>
+          </div>`, true);
+        const s = $('#sheet');
+        $('#obDone', s).addEventListener('click', () => { this.closeSheet(); this.markOnboarded(); });
+        $('#obTpl', s).addEventListener('click', () => { this.closeSheet(); this.markOnboarded(); this.openTemplates(); });
+      }, 1600);
+    },
+
+    markOnboarded() {
+      try { localStorage.setItem('nb-onboarded', '1'); } catch (e) {}
+    },
+
     openTemplates() {
       const list = NB.Templates.list();
       this.sheet(`
@@ -755,6 +793,138 @@
         btn.disabled = false;
         btn.innerHTML = label;
       }
+    },
+
+    /* ---------- clip editor -------------------------------------------------
+       Non-destructive: it moves the trim handles, the clip gain and the pitch,
+       never the sample buffer. Undo covers all of it. */
+    openClipEditor(clipId) {
+      const f = NB.project.findClip(clipId);
+      if (!f) return;
+      const { clip } = f;
+      const sample = NB.Library.get(clip.sampleId);
+      if (!sample) return;
+      const total = sample.beats * 4;                       // sixteenths in the sample
+      const len = clip.trimEndSix - clip.trimStartSix;
+
+      this.sheet(`
+        <h4>${escapeHtml(sample.name)}</h4>
+        <canvas id="ceWave" width="1120" height="200"
+          style="width:100%;height:110px;background:#07090b;border:1px solid var(--line);border-radius:8px;touch-action:none"></canvas>
+        <div class="sheetRow"><label>Start</label>
+          <span class="val" id="ceIn" style="width:64px">${clip.trimStartSix}</span>
+          <label style="flex:0 0 34px">End</label>
+          <span class="val" id="ceOut" style="width:64px">${clip.trimEndSix}</span>
+          <span style="font-size:11px;color:var(--ink-2);margin-left:auto">of ${total}</span></div>
+        <div class="sheetRow"><label>Gain</label>
+          <input type="range" id="ceGain" min="0" max="2" step="0.01" value="${clip.gain == null ? 1 : clip.gain}">
+          <span class="val" id="ceGainVal">${Math.round((clip.gain == null ? 1 : clip.gain) * 100)}%</span></div>
+        <div class="sheetBtns">
+          <button class="btn" id="ceNorm">Normalise</button>
+          <button class="btn" id="ceFit1">Fit 1 bar</button>
+          <button class="btn" id="ceFit2">Fit 2 bars</button>
+          <button class="btn" id="ceHalf">Half length</button>
+          <button class="btn" id="ceReset">Reset trim</button>
+          <button class="btn primary" id="ceDone">Done</button>
+        </div>`, true);
+
+      const s = $('#sheet');
+      const canvas = $('#ceWave', s);
+      const ctx2 = canvas.getContext('2d');
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(canvas.clientWidth * dpr) || 1120;
+      canvas.height = Math.round(110 * dpr);
+      ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const W = canvas.width / dpr, H = canvas.height / dpr;
+
+      const draw = () => {
+        ctx2.clearRect(0, 0, W, H);
+        const peaks = sample.peaks;
+        const mid = H / 2;
+        for (let x = 0; x < W; x++) {
+          const v = peaks[Math.floor((x / W) * peaks.length)] || 0;
+          const bh = Math.max(1, v * (H * 0.42));
+          const inTrim = (x / W) * total >= clip.trimStartSix && (x / W) * total <= clip.trimEndSix;
+          ctx2.fillStyle = inTrim ? '#ffb020' : 'rgba(120,132,148,.35)';
+          ctx2.fillRect(x, mid - bh, 1, bh * 2);
+        }
+        /* handles */
+        const hx = (clip.trimStartSix / total) * W;
+        const hx2 = (clip.trimEndSix / total) * W;
+        ctx2.fillStyle = 'rgba(255,176,32,.16)';
+        ctx2.fillRect(hx, 0, hx2 - hx, H);
+        ctx2.fillStyle = '#ffb020';
+        ctx2.fillRect(hx - 2, 0, 4, H);
+        ctx2.fillRect(hx2 - 2, 0, 4, H);
+        $('#ceIn', s).textContent = clip.trimStartSix;
+        $('#ceOut', s).textContent = clip.trimEndSix;
+      };
+      draw();
+
+      /* drag either handle */
+      let dragEdge = null;
+      const sixAt = (ev) => {
+        const r = canvas.getBoundingClientRect();
+        const x = Math.max(0, Math.min(r.width, ev.clientX - r.left));
+        const six = Math.round((x / r.width) * total);
+        return Math.max(0, Math.min(total, six));
+      };
+      canvas.addEventListener('pointerdown', (ev) => {
+        canvas.setPointerCapture(ev.pointerId);
+        const six = sixAt(ev);
+        dragEdge = Math.abs(six - clip.trimStartSix) < Math.abs(six - clip.trimEndSix) ? 'in' : 'out';
+        NB.History.push('Trim clip');
+        apply(six);
+      });
+      canvas.addEventListener('pointermove', (ev) => { if (dragEdge) apply(sixAt(ev)); });
+      canvas.addEventListener('pointerup', () => { dragEdge = null; });
+
+      const apply = (six) => {
+        if (dragEdge === 'in') clip.trimStartSix = Math.min(six, clip.trimEndSix - 1);
+        if (dragEdge === 'out') clip.trimEndSix = Math.max(six, clip.trimStartSix + 1);
+        draw();
+        NB.Timeline.draw();
+      };
+
+      const commit = () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); };
+
+      $('#ceGain', s).addEventListener('input', (e) => {
+        clip.gain = parseFloat(e.target.value);
+        $('#ceGainVal', s).textContent = Math.round(clip.gain * 100) + '%';
+      });
+      $('#ceGain', s).addEventListener('change', commit);
+
+      $('#ceNorm', s).addEventListener('click', () => {
+        let peak = 0;
+        for (let i = 0; i < sample.peaks.length; i++) peak = Math.max(peak, sample.peaks[i]);
+        if (peak <= 0.001) return;
+        NB.History.push('Normalise clip');
+        clip.gain = Math.min(2, Math.round((0.95 / peak) * 100) / 100);
+        $('#ceGain', s).value = clip.gain;
+        $('#ceGainVal', s).textContent = Math.round(clip.gain * 100) + '%';
+        commit();
+        toast('Normalised to ' + Math.round(clip.gain * 100) + '%', 'ok', 1400);
+      });
+
+      const fitBars = (bars) => {
+        NB.History.push(`Fit ${bars} bar${bars > 1 ? 's' : ''}`);
+        clip.trimStartSix = 0;
+        clip.trimEndSix = Math.max(1, Math.min(total, bars * 16));
+        draw(); NB.Timeline.draw(); commit();
+      };
+      $('#ceFit1', s).addEventListener('click', () => fitBars(1));
+      $('#ceFit2', s).addEventListener('click', () => fitBars(2));
+      $('#ceHalf', s).addEventListener('click', () => {
+        NB.History.push('Halve clip');
+        clip.trimEndSix = Math.max(clip.trimStartSix + 1, Math.round((clip.trimStartSix + clip.trimEndSix) / 2));
+        draw(); NB.Timeline.draw(); commit();
+      });
+      $('#ceReset', s).addEventListener('click', () => {
+        NB.History.push('Reset trim');
+        clip.trimStartSix = 0; clip.trimEndSix = total;
+        draw(); NB.Timeline.draw(); commit();
+      });
+      $('#ceDone', s).addEventListener('click', () => this.closeSheet());
     },
 
     /* Optional side pack: fetch it when hosted, pick it when not. */

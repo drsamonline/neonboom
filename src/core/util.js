@@ -33,6 +33,28 @@
     };
   };
 
+  /* One requestAnimationFrame loop, throttled to ~30 fps, shared by every
+     meter and readout. Three setInterval timers used to do this job. */
+  const Frame = {
+    _fns: [], _raf: 0, _last: 0, _minGap: 33,
+    add(fn) {
+      this._fns.push(fn);
+      if (!this._raf) this._start();
+      return fn;
+    },
+    _start() {
+      const loop = (t) => {
+        this._raf = requestAnimationFrame(loop);
+        if (t - this._last < this._minGap) return;
+        this._last = t;
+        for (let i = 0; i < this._fns.length; i++) {
+          try { this._fns[i](t); } catch (e) { /* a dead meter must not kill the loop */ }
+        }
+      };
+      this._raf = requestAnimationFrame(loop);
+    },
+  };
+
   const isTouch = () => matchMedia('(hover:none)').matches;
   const reducedMotion = () => matchMedia('(prefers-reduced-motion:reduce)').matches;
 
@@ -136,6 +158,6 @@
   const slug = (s) => (s || 'neonboom').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
 
   NB.util = { $, $$, clamp, lerp, uid, deepClone, debounce, rafThrottle, isTouch, reducedMotion,
-    haptic, toast, el, fmtDb, fmtPct, fmtSec, slug, Grid, TRACK_COLORS, SAFE_COLORS,
+    haptic, toast, el, fmtDb, fmtPct, fmtSec, slug, Frame, Grid, TRACK_COLORS, SAFE_COLORS,
     paletteColor, applyPaletteToProject, REF_BPM, SIX_PER_BAR, PROJECT_BARS, PX_PER_SIX };
 })(window.NB = window.NB || {});

@@ -53,7 +53,7 @@ entirely after the first visit.
 | 9 | **Off-main-thread peaks**: compute peaks in a Web Worker when a sample is imported. | S | low | import of a 5-minute file no longer janks |
 | 10 | Draw waveforms from a **pre-baked path per sample** (`Path2D` scaled per clip) instead of per-pixel rects. | S | low | ~2× faster clip drawing at high zoom |
 | 11 | **Virtualise track rows** vertically as well as horizontally (already horizontal). | S | low | stays smooth past ~30 tracks |
-| 12 | Replace the 30 fps `setInterval` meters with a single rAF loop that shares the playhead tick. | S | low | three timers → one (the scheduler added a fourth) |
+| 12 | ~~One rAF for the meters~~ — **shipped in 1.7.0** (`util.Frame`) | — | — | — |
 
 ### 1.3 Perceived speed
 
@@ -91,15 +91,16 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 26 | **MIDI-in** (Web MIDI): pads on notes, knobs on CC | M | low | makes it playable with hardware |
 | 27 | **Tap tempo + tempo automation-free half/double** | S | low | the most-requested small thing |
 | 28 | **Scene / pattern launcher** (Ableton-style clip rows) | L | med | a different workflow; keep it optional behind a tab |
-| 29 | **Sample editor** (trim, normalise, fade, crop to selection) | M | med | imported loops are otherwise un-editable |
+| 29 | ~~Clip editor~~ — **shipped in 1.7.0** (trim handles, normalise, fit-to-bar; non-destructive) | — | — |
 | 30 | ~~Per-track FX send amounts~~ — **shipped in 1.4.0** (A/B on every strip, post-fader, exported) | — | — | — |
 | 31 | ~~Undo history panel with named steps~~ — **shipped in 1.4.0** (drawer → History, click to jump) | — | — | — |
 | 32 | ~~Project templates~~ — **shipped in 1.6.0** (`src/core/templates.js`) | — | — | — |
 | 33 | ~~Swing~~ — **shipped in 1.2.0** (0–60 %, playback + export) | — | — | — |
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
-22, 24, 25, 30, 31, 32, 33, 35, 42, 44 and 45 are done. The next cheapest wins are **29**
-(sample editor), **41** (empty-state guidance) and **12** (one rAF for the meters).
+Everything in the "cheap" column is now done except **#36** (roving-tabindex keyboard nav).
+What is left is the two big ones — **#23 automation lanes** and **#26 MIDI-in** — plus
+**#34 WSOLA time-stretch** and **#28 scene launcher**, and the distribution items (#46–#52).
 
 ---
 
@@ -109,11 +110,11 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 |---|---|---|---|
 | 35 | ~~Colour-blind safe palette~~ — **shipped in 1.6.0** (Okabe–Ito, More → Appearance) | — | — |
 | 36 | **Focus rings + full keyboard navigation** on the pad grid and mixer (roving tabindex) | M | low |
-| 37 | **`aria-live` announcements** for transport state and clip edits | S | low |
+| 37 | ~~aria-live announcements~~ — **shipped in 1.7.0** | — | — |
 | 38 | **Pinch-to-zoom** on the timeline in edit mode | S | low |
 | 39 | **Haptics on clip snap** (already on buttons) | S | low |
-| 40 | **Onboarding overlay** — three tips, shown once, dismissible | S | low |
-| 41 | **Empty-state guidance** when a track has no clips | S | low |
+| 40 | ~~Onboarding overlay~~ — **shipped in 1.7.0** | — | — |
+| 41 | ~~Empty-state guidance~~ — **shipped in 1.7.0** | — | — |
 | 42 | ~~Larger-text mode~~ — **shipped in 1.6.0** | — | — |
 | 43 | **Reduced-motion** already respected; extend to the playhead follow | S | low |
 | 44 | ~~Multi-select clips~~ — **shipped in 1.6.0** (shift-click + marquee, bulk ops) | — | — |
@@ -134,6 +135,16 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 52 | **Docs site** generated from FUNCTIONS.md | S | low |
 
 ---
+
+### Distribution and size
+
+| # | Idea | Effort | Bloat |
+|---|---|---|---|
+| 58 | **Minified build** — `dist/neonboom.min.html` via terser (dev-only dependency), shipped alongside the readable one. Roughly 40 % off 264 KB | S | low |
+| 59 | Move the 27 loop generators into a lazily-fetched module so the core file only carries the engine | M | med |
+
+The single file is 264 KB and grows ~10 KB per feature release. The tripwire in CI is 288 KB;
+the honest fix when it gets tight is #58, not a bigger number.
 
 ## 6. Deliberately rejected (bloat control)
 

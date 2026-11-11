@@ -11,7 +11,7 @@
     mount(host) {
       this.host = host;
       this.render();
-      if (!this._meterTimer) this._meterTimer = setInterval(() => this.tickMeters(), 50);
+      if (!this._meterHooked) { this._meterHooked = true; NB.util.Frame.add(() => this.tickMeters()); }
       NB.bus.on('project:replaced', () => this.render());
     },
 

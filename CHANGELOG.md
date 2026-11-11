@@ -5,6 +5,28 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.7.0] — 2026-11-11
+
+Editing polish and the accessibility pass.
+
+### Added
+- **Clip editor** (inspector → *Edit waveform*, or the clip sheet): the full sample with draggable
+  trim handles, plus **Normalise**, **Fit 1 bar**, **Fit 2 bars**, **Half length** and **Reset trim**.
+  Non-destructive — it moves trim handles, gain and pitch, never the buffer, so undo covers it.
+- **Empty-lane hints**: a track with no clips says what to do, with different wording on touch.
+- **Screen-reader announcements** for transport state and clip edits (`aria-live`, visually hidden).
+- **First-run tips**: three cards, shown once, remembered in `localStorage`.
+
+### Changed
+- One shared `requestAnimationFrame` loop (throttled to ~30 fps) now drives the master VU, the
+  per-track meters and the mixer meters. Three `setInterval` timers used to do the same job.
+
+### Fixed
+- Nothing user-facing; the suite needed `nb-onboarded` preset so the tips sheet would not cover
+  the app during tests.
+
+---
+
 ## [1.6.0] — 2026-11-11
 
 Editing and accessibility: templates, multi-select, and a palette you can actually read.

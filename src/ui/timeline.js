@@ -79,8 +79,7 @@
       NB.bus.on('loop', () => { this._rulerDirty = true; this.draw(); });
       NB.bus.on('transport', () => this.drawOverlay());
 
-      /* meters run at ~30fps, independent of playback rAF */
-      setInterval(() => this.updateMeters(), 33);
+      NB.util.Frame.add(() => this.updateMeters());
     },
 
     pinCanvases() {
@@ -239,6 +238,20 @@
         ctx.strokeStyle = 'rgba(255,176,32,.35)';
         ctx.beginPath(); ctx.moveTo(a + .5, sy); ctx.lineTo(a + .5, sy + H);
         ctx.moveTo(b - .5, sy); ctx.lineTo(b - .5, sy + H); ctx.stroke();
+      }
+
+      /* empty lanes get a hint instead of silence */
+      for (let i = firstTrack; i <= lastTrack; i++) {
+        const track = this.tracks[i];
+        if (!track || track.clips.length) continue;
+        const y = i * th + th / 2;
+        const hint = isTouch()
+          ? 'tap a pad with REC armed, or drag one here'
+          : 'drop a pad here · click a pad to place it at the playhead';
+        ctx.font = '11px ui-sans-serif,system-ui,sans-serif';
+        ctx.fillStyle = 'rgba(120,132,148,.42)';
+        const x = Math.max(sx, 0) + 14;
+        ctx.fillText(hint, x, y + 4, Math.max(40, Math.min(this.vw - 30, 520)));
       }
 
       /* clips */
@@ -886,6 +899,7 @@
       this.selectedClipId = null;
       this.selectedClipIds.clear();
       NB.bus.emit('clips:changed');
+      NB.bus.emit('announce', ids.length > 1 ? `Deleted ${ids.length} clips` : 'Deleted clip');
       NB.Transport.refresh();
       NB.Persistence.saveSoon();
       haptic(10);

@@ -40,7 +40,7 @@
   ];
 
   const App = {
-    version: '1.6.0',
+    version: '1.7.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');
@@ -203,6 +203,7 @@
       mark('restore');
       NB.Shell.syncLoopBtn();
       NB.Shell.openDrawer('mixer');
+      NB.Shell.maybeOnboard();
 
       /* ---------- the rest of the library, after the veil lifts ---------- */
       if (phase2.length) {

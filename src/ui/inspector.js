@@ -140,6 +140,7 @@
         b.addEventListener('click', fn);
         g.appendChild(b);
       };
+      mk('Edit waveform', () => NB.Shell.openClipEditor(clip.id));
       mk('Split', () => T.splitAtPlayhead());
       mk('Duplicate', () => T.duplicateSelected());
       mk('Quantize', () => T.quantize());

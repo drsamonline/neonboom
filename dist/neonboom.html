@@ -1007,11 +1007,24 @@ select{cursor:pointer;}
       return oac.startRendering();
     },
 
+    /* White noise is full-band to Nyquist, which reads as fizz — especially
+       once a 7 kHz high-pass has removed everything that would mask it. One
+       gentle two-pole low-pass at ~11 kHz keeps hats and snares bright without
+       the hiss. */
     noiseBuffer(ctx, seconds) {
       const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
       const buf = ctx.createBuffer(1, len, ctx.sampleRate);
       const d = buf.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+
+      /* two-pole low-pass, fc ≈ 11 kHz — before the return, obviously */
+      const a = 1 - Math.exp(-2 * Math.PI * 11000 / ctx.sampleRate);
+      let y1 = 0, y2 = 0;
+      for (let i = 0; i < len; i++) {
+        y1 += a * (d[i] - y1);
+        y2 += a * (y1 - y2);
+        d[i] = y2;
+      }
       return buf;
     },
 
@@ -1516,6 +1529,24 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         for (let i = 0; i < len; i++) {
           data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
         }
+        /* Air absorption: a one-pole whose cutoff falls through the tail, so the
+           reverb darkens instead of hissing. Full-band noise reads as "noise",
+           not as a room. */
+        let y = 0;
+        for (let i = 0; i < len; i++) {
+          const t = i / len;
+          const fc = 12000 * (1 - t) + 1500 * t;
+          const a = 1 - Math.exp(-2 * Math.PI * fc / rate);
+          y += a * (data[i] - y);
+          data[i] = y;
+        }
+        /* renormalise: the filter costs a lot of level on a decaying signal */
+        let peak = 0;
+        for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(data[i]));
+        if (peak > 0.0001) {
+          const gain = 0.9 / peak;
+          for (let i = 0; i < len; i++) data[i] *= gain;
+        }
       }
       return buf;
     },
@@ -1886,15 +1917,25 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       const fadeIn = Grid.sixToSec(clip.fadeIn || 0, bpm);
       const fadeOut = Grid.sixToSec(clip.fadeOut || 0, bpm);
 
+      /* Every clip gets at least a 2.5 ms ramp at each end. Cutting a waveform
+         off mid-cycle is a step discontinuity, and a step is a click — the
+         single biggest source of "glitchy" in a sampler. Explicit fades win
+         when they are longer. */
+      const declick = Math.min(0.0025, playDur / 4);
       g.gain.cancelScheduledValues(when);
       if (fadeIn > 0.001) {
         g.gain.setValueAtTime(0.0001, when);
         g.gain.linearRampToValueAtTime(level, when + Math.min(fadeIn, playDur));
       } else {
-        g.gain.setValueAtTime(level, when);
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.linearRampToValueAtTime(level, when + declick);
       }
       if (fadeOut > 0.001) {
         const outStart = when + Math.max(0, playDur - Math.min(fadeOut, playDur));
+        g.gain.setValueAtTime(level, outStart);
+        g.gain.linearRampToValueAtTime(0.0001, when + playDur);
+      } else {
+        const outStart = when + Math.max(0, playDur - declick);
         g.gain.setValueAtTime(level, outStart);
         g.gain.linearRampToValueAtTime(0.0001, when + playDur);
       }
@@ -2829,7 +2870,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
      so the rendered PCM is cached in IndexedDB as 16-bit and re-hydrated on
      the next visit: a warm start is a memory copy, not a synthesis run.
      Bump SYNTH_VERSION whenever a generator changes. */
-  const SYNTH_VERSION = 1;
+  const SYNTH_VERSION = 2;   // 2: noise band-limited, de-click ramps
 
   const LoopCache = {
     key(name) { return `${name}@v${SYNTH_VERSION}@${REF_BPM}`; },
@@ -3293,9 +3334,9 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         fill(P, 5, 'Bell Melody', BAR * 4, 2);
         fill(P, 6, 'Vinyl Crackle Bed', BAR * 4, 2);
         fill(P, 7, 'Impact Hit', BAR * 4, 2);
-        t[0].vol = 0.9; t[1].vol = 0.7; t[2].vol = 0.42;
+        t[0].vol = 0.9; t[1].vol = 0.68; t[2].vol = 0.34;
         t[3].vol = 0.85; t[4].vol = 0.4; t[5].vol = 0.35;
-        t[6].vol = 0.25; t[7].vol = 0.55;
+        t[6].vol = 0.14; t[7].vol = 0.48;
         t[3].sendB = 0.12; t[5].sendA = 0.25; t[5].sendB = 0.3;
         P.swing = 0.12;
       } else if (id === 'house') {
@@ -3309,7 +3350,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         fill(P, 5, 'Arp Pluck Loop', BAR * 2, 4);
         fill(P, 6, 'Riser FX', BAR * 8, 1);
         fill(P, 7, 'Crash Accent', BAR * 4, 2);
-        t[0].vol = 0.9; t[1].vol = 0.55; t[2].vol = 0.4;
+        t[0].vol = 0.9; t[1].vol = 0.52; t[2].vol = 0.34;
         t[3].vol = 0.75; t[4].vol = 0.5; t[5].vol = 0.42;
         t[6].vol = 0.3; t[7].vol = 0.5;
         t[4].sendA = 0.3; t[4].sendB = 0.25; t[5].sendA = 0.35; t[5].sendB = 0.2;
@@ -7267,7 +7308,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '2.6.0',
+    version: '2.6.1',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

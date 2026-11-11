@@ -17,11 +17,24 @@
       return oac.startRendering();
     },
 
+    /* White noise is full-band to Nyquist, which reads as fizz — especially
+       once a 7 kHz high-pass has removed everything that would mask it. One
+       gentle two-pole low-pass at ~11 kHz keeps hats and snares bright without
+       the hiss. */
     noiseBuffer(ctx, seconds) {
       const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
       const buf = ctx.createBuffer(1, len, ctx.sampleRate);
       const d = buf.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+
+      /* two-pole low-pass, fc ≈ 11 kHz — before the return, obviously */
+      const a = 1 - Math.exp(-2 * Math.PI * 11000 / ctx.sampleRate);
+      let y1 = 0, y2 = 0;
+      for (let i = 0; i < len; i++) {
+        y1 += a * (d[i] - y1);
+        y2 += a * (y1 - y2);
+        d[i] = y2;
+      }
       return buf;
     },
 

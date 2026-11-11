@@ -5,6 +5,35 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.6.1] — 2026-11-11
+
+Sound quality: the mix had 2,041 hard edges in 22 seconds. It now has 50.
+
+### Fixed
+- **A 2.5 ms de-click ramp on every clip.** Cutting a waveform mid-cycle is a step discontinuity,
+  and a step is a click. Clips now fade in and out by 2.5 ms unless you set a longer fade yourself —
+  the single biggest source of "glitchy" in a sampler.
+- **Noise is band-limited.** `Math.random()` noise is full-band to Nyquist, which reads as fizz —
+  especially once a 7 kHz high-pass has removed everything that would mask it. Hats, snares, shakers
+  and the vinyl bed now pass through a two-pole low-pass at ~11 kHz. Hats are still 30× brighter than
+  a kick; they just stop hissing.
+- **The reverb impulse is damped.** The IR was flat white noise with a decay envelope — a bright hiss
+  rather than a room. It now has air absorption: a one-pole filter whose cutoff falls from 12 kHz to
+  1.5 kHz through the tail, then renormalised to 0.9 peak.
+- **The demo and Trap template were too dense.** Vinyl bed 0.32 → 0.16, hats 0.46 → 0.36, crash
+  0.62 → 0.5.
+- **`SYNTH_VERSION` bumped to 2**, so cached loops are re-rendered instead of serving the old noisy
+  audio. The optional pack is rebuilt to match.
+
+### Measured on the demo arrangement, 22 s render
+
+| | before | after |
+|---|---|---|
+| Sample-to-sample jumps > 0.25 | **2,041** | **50** |
+| Largest single jump | 0.567 | 0.357 |
+| Clipped samples | 0 | 0 |
+| Peak / RMS / crest | 0.889 / 0.155 / 5.7 | 0.895 / 0.157 / 5.7 |
+
 ## [2.6.0] — 2026-11-11 · **final release**
 
 Every item on the audit list is shipped and the gap list is empty. See

@@ -11,7 +11,7 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.6.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.6.1-ffb020)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/status-complete-41d18a)](#status)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
@@ -32,7 +32,7 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 
 ## Status
 
-**Complete at 2.6.0 (2026-11-11).** Every item on the audit list shipped: pads, arrangement, mixer
+**Complete at 2.6.1 (2026-11-11).** Every item on the audit list shipped: pads, arrangement, mixer
 with sends, master FX, automation for level/pan/both sends, templates, clip editor, stems, scenes,
 MIDI notes + CC learn, WSOLA tempo-fit, microphone recording.
 
@@ -49,6 +49,7 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 
 | | |
 |---|---|
+| 🔇 **Clean** | Every clip gets a 2.5 ms de-click ramp, noise is band-limited at 11 kHz and the reverb tail is damped — the demo arrangement went from 2 041 hard edges in 22 s to 50. |
 | ⚡ **Fast** | Loops are rendered once and cached in IndexedDB as 16-bit mono, so a warm start is a memory copy: **~4.7 s cold → ~1.6 s warm**, with the priority half ready before the veil lifts. |
 | 🎯 **Sample-accurate** | A look-ahead scheduler queues 180 ms of audio at a time, so loop points land on the clock instead of on a `setTimeout`, tempo changes apply while rolling, and a 64-bar project never builds hundreds of nodes up front. |
 | 📦 **Optional pack** | A separate 6.9 MB zip of the same 27 loops, rendered by the app itself. Bundled builds load it automatically; on the web it is a button. The core file never grows. |

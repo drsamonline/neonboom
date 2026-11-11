@@ -394,7 +394,7 @@
      so the rendered PCM is cached in IndexedDB as 16-bit and re-hydrated on
      the next visit: a warm start is a memory copy, not a synthesis run.
      Bump SYNTH_VERSION whenever a generator changes. */
-  const SYNTH_VERSION = 1;
+  const SYNTH_VERSION = 2;   // 2: noise band-limited, de-click ramps
 
   const LoopCache = {
     key(name) { return `${name}@v${SYNTH_VERSION}@${REF_BPM}`; },

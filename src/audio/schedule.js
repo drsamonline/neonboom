@@ -78,15 +78,25 @@
       const fadeIn = Grid.sixToSec(clip.fadeIn || 0, bpm);
       const fadeOut = Grid.sixToSec(clip.fadeOut || 0, bpm);
 
+      /* Every clip gets at least a 2.5 ms ramp at each end. Cutting a waveform
+         off mid-cycle is a step discontinuity, and a step is a click — the
+         single biggest source of "glitchy" in a sampler. Explicit fades win
+         when they are longer. */
+      const declick = Math.min(0.0025, playDur / 4);
       g.gain.cancelScheduledValues(when);
       if (fadeIn > 0.001) {
         g.gain.setValueAtTime(0.0001, when);
         g.gain.linearRampToValueAtTime(level, when + Math.min(fadeIn, playDur));
       } else {
-        g.gain.setValueAtTime(level, when);
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.linearRampToValueAtTime(level, when + declick);
       }
       if (fadeOut > 0.001) {
         const outStart = when + Math.max(0, playDur - Math.min(fadeOut, playDur));
+        g.gain.setValueAtTime(level, outStart);
+        g.gain.linearRampToValueAtTime(0.0001, when + playDur);
+      } else {
+        const outStart = when + Math.max(0, playDur - declick);
         g.gain.setValueAtTime(level, outStart);
         g.gain.linearRampToValueAtTime(0.0001, when + playDur);
       }

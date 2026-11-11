@@ -80,6 +80,24 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         for (let i = 0; i < len; i++) {
           data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
         }
+        /* Air absorption: a one-pole whose cutoff falls through the tail, so the
+           reverb darkens instead of hissing. Full-band noise reads as "noise",
+           not as a room. */
+        let y = 0;
+        for (let i = 0; i < len; i++) {
+          const t = i / len;
+          const fc = 12000 * (1 - t) + 1500 * t;
+          const a = 1 - Math.exp(-2 * Math.PI * fc / rate);
+          y += a * (data[i] - y);
+          data[i] = y;
+        }
+        /* renormalise: the filter costs a lot of level on a decaying signal */
+        let peak = 0;
+        for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(data[i]));
+        if (peak > 0.0001) {
+          const gain = 0.9 / peak;
+          for (let i = 0; i < len; i++) data[i] *= gain;
+        }
       }
       return buf;
     },

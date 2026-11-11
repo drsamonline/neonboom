@@ -78,9 +78,9 @@
         fill(P, 5, 'Bell Melody', BAR * 4, 2);
         fill(P, 6, 'Vinyl Crackle Bed', BAR * 4, 2);
         fill(P, 7, 'Impact Hit', BAR * 4, 2);
-        t[0].vol = 0.9; t[1].vol = 0.7; t[2].vol = 0.42;
+        t[0].vol = 0.9; t[1].vol = 0.68; t[2].vol = 0.34;
         t[3].vol = 0.85; t[4].vol = 0.4; t[5].vol = 0.35;
-        t[6].vol = 0.25; t[7].vol = 0.55;
+        t[6].vol = 0.14; t[7].vol = 0.48;
         t[3].sendB = 0.12; t[5].sendA = 0.25; t[5].sendB = 0.3;
         P.swing = 0.12;
       } else if (id === 'house') {
@@ -94,7 +94,7 @@
         fill(P, 5, 'Arp Pluck Loop', BAR * 2, 4);
         fill(P, 6, 'Riser FX', BAR * 8, 1);
         fill(P, 7, 'Crash Accent', BAR * 4, 2);
-        t[0].vol = 0.9; t[1].vol = 0.55; t[2].vol = 0.4;
+        t[0].vol = 0.9; t[1].vol = 0.52; t[2].vol = 0.34;
         t[3].vol = 0.75; t[4].vol = 0.5; t[5].vol = 0.42;
         t[6].vol = 0.3; t[7].vol = 0.5;
         t[4].sendA = 0.3; t[4].sendB = 0.25; t[5].sendA = 0.35; t[5].sendB = 0.2;

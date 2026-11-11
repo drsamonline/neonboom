@@ -11,11 +11,11 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.1.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.2.0-ffb020)](CHANGELOG.md)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
-[![Tests](https://img.shields.io/badge/headless_tests-180_assertions_passing-41d18a)](#testing)
+[![Tests](https://img.shields.io/badge/headless_tests-174_assertions_passing-41d18a)](#testing)
 [![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
 [![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
@@ -43,7 +43,7 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 | 📈 **Automation** | Per-track level and pan envelopes. Press **A** on a track, click to add points, drag to move, alt-click to remove. Played and exported |
 | ✂️ **Clip editor** | Drag the trim handles on the full waveform, normalise, fit to 1 or 2 bars, halve, reset. Non-destructive — undo covers all of it. |
 | 🖱 **Multi-select** | Shift-click or drag a marquee, then move, nudge, quantise, duplicate or delete the whole selection at once. |
-| ♿ **Accessible** | Colour-blind-safe palette, larger-text mode, 40 px+ targets, reduced-motion aware, keyboard-first, and transport/clip changes announced to screen readers. |
+| ♿ **Accessible** | Colour-blind-safe palette, larger-text mode, 40 px+ targets, reduced-motion aware, a single tab stop per grid with arrow-key navigation, and transport/clip changes announced to screen readers. |
 | 🎛 **Pads** | 27 synthesised loops as waveform tiles. Tap to audition, arm REC to drop one at the playhead, or drag a pad onto the timeline. |
 | 🎚 **Arrangement** | Canvas timeline: drag to move, drag edges to trim, alt-drag to duplicate, split, nudge, quantise, snap 1/16 – 1/4 bar, loop region with draggable handles. |
 | 🎹 **Mixer** | Fader, pan, mute, solo and a live level meter on every strip, plus a master meter. |
@@ -181,14 +181,15 @@ npm run build               # → dist/neonboom.html and dist/neonboom.min.html
 The repo is checked with a headless Chromium harness that boots the app and exercises the public surface — transport, clip edits, undo/redo, zoom extremes, pads, recording, mixer, FX, offline render, autosave restore, touch gestures and layout at three viewport sizes.
 
 ```bash
-npm test                       # 85 assertions: functional, interaction, touch, responsive, pitch/fade/stems, cache, standalone
-npm run test:offline           # serves over http, kills the network, reloads — proves the offline claim
+npm test                       # 161 assertions: core (75) + features (86)
+npm run test:offline           # 13 assertions: installability audit + the app booting with the network off
 npm run test:pack              # 18 assertions: pack present / missing / corrupt, zip reader, manual install
+npm run test:layout            # geometry regression across three viewports (--update to rebaseline)
 npm run build:pack             # re-renders pack/neonboom-pack-v1.zip from the synth
 npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **180 assertions across three harnesses (156 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
+Latest run: **192 assertions across five harnesses (75 core · 86 features · 18 pack · 13 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
 
 ---
 

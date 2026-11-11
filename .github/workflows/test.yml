@@ -25,10 +25,20 @@ jobs:
       - name: Build the single-file bundle
         run: node scripts/build-standalone.mjs
 
-      - name: Run the headless suite
+      - name: Core suite
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: node tests/run.mjs
+
+      - name: Features suite
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: node tests/extended.mjs
+
+      - name: Layout regression
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+        run: node tests/layout.mjs
 
       - name: Size budgets
         # The minified file is what people download, so it gets the tight budget.

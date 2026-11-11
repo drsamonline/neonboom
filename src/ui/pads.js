@@ -22,6 +22,8 @@
       this.renderChips();
       this.render();
 
+      this._wireKeys();
+
       this.recBtn.addEventListener('click', () => {
         this.armed = !this.armed;
         this.recBtn.classList.toggle('on', this.armed);
@@ -30,6 +32,40 @@
       });
 
       NB.bus.on('library:changed', () => { this.renderChips(); this.render(); });
+    },
+
+    /* Roving tabindex: one tab stop for the whole grid, arrow keys inside it.
+       A 27-pad grid that swallows 27 tab stops is hostile to keyboard users. */
+    _wireKeys() {
+      this.grid.addEventListener('keydown', (e) => {
+        const pads = Array.from(this.grid.querySelectorAll('.pad'));
+        if (!pads.length) return;
+        const i = pads.indexOf(document.activeElement);
+        const cols = (getComputedStyle(this.grid).gridTemplateColumns || '').split(' ').filter(Boolean).length || 3;
+        let next = null;
+        if (e.key === 'ArrowRight') next = i + 1;
+        else if (e.key === 'ArrowLeft') next = i - 1;
+        else if (e.key === 'ArrowDown') next = i + cols;
+        else if (e.key === 'ArrowUp') next = i - cols;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = pads.length - 1;
+        else if (e.key === 'Enter' || e.key === ' ') {
+          /* pads fire on pointerdown, so a synthetic click would do nothing */
+          if (i >= 0) {
+            e.preventDefault();
+            const id = pads[i].dataset.id;
+            pads[i].classList.add('hit');
+            setTimeout(() => pads[i].classList.remove('hit'), 120);
+            this.trigger(id);
+          }
+          return;
+        }
+        if (next == null) return;
+        e.preventDefault();
+        const clamped = Math.max(0, Math.min(pads.length - 1, next));
+        pads.forEach((p, k) => { p.tabIndex = k === clamped ? 0 : -1; });
+        pads[clamped].focus();
+      });
     },
 
     renderChips() {
@@ -65,6 +101,7 @@
           draggable: 'true',
           'data-id': s.id,
           'aria-label': s.name,
+          tabindex: i === 0 ? '0' : '-1',
         });
         pad.style.setProperty('--pad-color', s.color);
         pad.innerHTML = `

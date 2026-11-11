@@ -1,0 +1,185 @@
+{
+  "desktop": {
+    "viewport": [
+      1440,
+      900
+    ],
+    "#topbar": [
+      1440,
+      60
+    ],
+    "#padPanel": [
+      260,
+      516
+    ],
+    "#arrange": [
+      892,
+      516
+    ],
+    "#inspector": [
+      288,
+      516
+    ],
+    "#tabbar": "hidden",
+    "#drawer": [
+      1440,
+      324
+    ],
+    "#padGrid": [
+      259,
+      324
+    ],
+    ".pad": [
+      116,
+      74
+    ],
+    "#ruler": [
+      724,
+      30
+    ],
+    "#tlViewport": [
+      724,
+      427
+    ],
+    "#trackHeads": [
+      168,
+      427
+    ],
+    ".trackHead": [
+      167,
+      74
+    ],
+    ".drawerTabs": [
+      1440,
+      45
+    ],
+    "#statusbar": null,
+    "#transport": null,
+    ".transport": [
+      254,
+      54
+    ],
+    ".lcd": [
+      118,
+      45
+    ],
+    "#btnPlay": [
+      54,
+      54
+    ],
+    "overflowX": false,
+    "canvasPainted": true
+  },
+  "tablet": {
+    "viewport": [
+      856,
+      1142
+    ],
+    "#topbar": [
+      834,
+      56
+    ],
+    "#padPanel": "hidden",
+    "#arrange": [
+      834,
+      999
+    ],
+    "#inspector": "hidden",
+    "#tabbar": [
+      834,
+      57
+    ],
+    "#drawer": "hidden",
+    "#padGrid": "hidden",
+    ".pad": "hidden",
+    "#ruler": [
+      666,
+      30
+    ],
+    "#tlViewport": [
+      666,
+      912
+    ],
+    "#trackHeads": [
+      168,
+      912
+    ],
+    ".trackHead": [
+      167,
+      74
+    ],
+    ".drawerTabs": "hidden",
+    "#statusbar": null,
+    "#transport": null,
+    ".transport": [
+      254,
+      54
+    ],
+    ".lcd": [
+      104,
+      45
+    ],
+    "#btnPlay": [
+      54,
+      54
+    ],
+    "overflowX": false,
+    "canvasPainted": true
+  },
+  "phone": {
+    "viewport": [
+      390,
+      844
+    ],
+    "#topbar": [
+      390,
+      56
+    ],
+    "#padPanel": "hidden",
+    "#arrange": [
+      390,
+      731
+    ],
+    "#inspector": "hidden",
+    "#tabbar": [
+      390,
+      57
+    ],
+    "#drawer": "hidden",
+    "#padGrid": "hidden",
+    ".pad": "hidden",
+    "#ruler": [
+      278,
+      30
+    ],
+    "#tlViewport": [
+      278,
+      644
+    ],
+    "#trackHeads": [
+      112,
+      644
+    ],
+    ".trackHead": [
+      111,
+      72
+    ],
+    ".drawerTabs": "hidden",
+    "#statusbar": null,
+    "#transport": null,
+    ".transport": [
+      150,
+      54
+    ],
+    ".lcd": [
+      80,
+      37
+    ],
+    "#btnPlay": [
+      54,
+      54
+    ],
+    "overflowX": false,
+    "canvasPainted": true
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "neonboom",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Offline-first beat workstation that runs in a browser tab: procedural loop library, pad grid, canvas arrangement, mixer, master FX and WAV export. Zero dependencies.",
   "private": true,
   "type": "module",
@@ -28,12 +28,14 @@
   ],
   "scripts": {
     "build": "node scripts/build-standalone.mjs",
-    "test": "node tests/run.mjs",
+    "test": "node tests/run.mjs && node tests/extended.mjs",
     "screenshots": "node tests/screenshots.mjs",
     "serve": "npx --yes serve .",
     "test:offline": "node tests/offline.mjs",
     "build:pack": "node scripts/build-pack.mjs",
-    "test:pack": "node tests/pack.mjs"
+    "test:pack": "node tests/pack.mjs",
+    "test:extended": "node tests/extended.mjs",
+    "test:layout": "node tests/layout.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^23.0.0",

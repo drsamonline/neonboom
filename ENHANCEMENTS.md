@@ -99,8 +99,8 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
 Everything in the "cheap" column is now done except **#36** (roving-tabindex keyboard nav).
-What is left: **#34 WSOLA time-stretch**, **#28 scene launcher**, **#36** keyboard nav, and the
-distribution items (#46–#52).
+What is left: **#34 WSOLA time-stretch** and **#28 scene launcher** (both large), plus code
+signing (#46/#47), a docs site (#52) and i18n (#51).
 
 ---
 
@@ -128,9 +128,9 @@ distribution items (#46–#52).
 |---|---|---|---|
 | 46 | **Signed desktop builds in CI** (already wired; add code-signing secrets) | M | low |
 | 47 | **Release APK via Gradle in CI** (debug APK already builds) | M | low |
-| 48 | **Lighthouse/PWA CI check** on every PR | S | low |
+| 48 | ~~PWA installability check~~ — **shipped in 2.2.0** (manifest, icons, display, SW control) | — | — |
 | 49 | **Bundle-size budget** in CI: fail if `dist/neonboom.html` grows past 220 KB | S | low |
-| 50 | **Visual regression screenshots** in CI (the harness already captures them) | S | low |
+| 50 | ~~Visual regression~~ — **shipped in 2.2.0** as geometry regression (`tests/layout.mjs`, ±4 px) | — | — |
 | 51 | **i18n**: extract UI strings into one dictionary, ship hi/bn/ta | M | med |
 | 52 | **Docs site** generated from FUNCTIONS.md | S | low |
 

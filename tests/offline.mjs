@@ -55,6 +55,35 @@ try {
   });
   check('service worker registers and activates', reg.supported && reg.active, reg);
 
+  /* installability audit — the things a browser checks before offering "Install" */
+  const audit = await page.evaluate(async () => {
+    const link = document.querySelector('link[rel=manifest]');
+    const out = { link: !!link };
+    if (link) {
+      const m = await (await fetch(link.href)).json();
+      out.name = !!m.name;
+      out.short = !!m.short_name;
+      out.start = !!m.start_url;
+      out.display = m.display;
+      out.theme = !!m.theme_color;
+      out.background = !!m.background_color;
+      out.icons = (m.icons || []).length;
+      out.bigIcon = (m.icons || []).some((i) => /512/.test(i.sizes || ''));
+    }
+    out.title = document.title.length > 0;
+    out.viewport = !!document.querySelector('meta[name=viewport]');
+    out.https = location.protocol === 'https:' || location.hostname === 'localhost';
+    out.swController = !!navigator.serviceWorker.controller || (await navigator.serviceWorker.ready).active != null;
+    return out;
+  });
+  check('manifest is linked over http(s)', audit.link);
+  check('manifest has name, short_name, start_url', audit.name && audit.short && audit.start, audit);
+  check('manifest declares standalone display', audit.display === 'standalone', audit.display);
+  check('manifest has theme + background colours', audit.theme && audit.background);
+  check('manifest ships a 512px icon', audit.icons >= 2 && audit.bigIcon, audit.icons);
+  check('page has a title and a viewport meta', audit.title && audit.viewport);
+  check('service worker is controlling the page', audit.swController);
+
   /* give the install step time to cache every asset */
   await new Promise((r) => setTimeout(r, 2500));
   const cached = await page.evaluate(async () => {

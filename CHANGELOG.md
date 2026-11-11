@@ -5,6 +5,31 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.2.0] — 2026-11-11
+
+Hardening: keyboard navigation, a layout-regression gate, and an installability audit.
+
+### Added
+- **Roving tabindex on the pad grid** — the whole grid is one tab stop; arrows move between pads,
+  Home/End jump to the edges, Enter or Space auditions the focused pad. 27 tab stops for 27 pads
+  was hostile to keyboard users.
+- **`tests/layout.mjs`** — geometry regression without pixel diffing: captures the boxes of 16
+  key elements plus the canvas paint state at three viewports and compares them to
+  `tests/layout-baseline.json` (±4 px). `--update` rebaselines; CI fails on unexplained drift.
+- **Installability audit** in the offline suite: manifest fields, 512 px icon, standalone display,
+  theme/background colours, viewport meta, and that a service worker is actually controlling the
+  page.
+
+### Changed
+- The test suite is split into `tests/harness.mjs` (browser lifecycle, assertions) with
+  `tests/run.mjs` (core, 75) and `tests/extended.mjs` (features, 86). One 18-section file was
+  exhausting a 2 GB runner mid-run.
+- The browser is restarted between blocks of sections for the same reason.
+- The stem test trims to two bars before rendering eight stems — the assertion is about count,
+  not length, and eight full-length renders was the memory spike.
+
+---
+
 ## [2.1.0] — 2026-11-11
 
 MIDI CC learn — the knobs on your controller can drive the app.

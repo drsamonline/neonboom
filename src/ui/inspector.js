@@ -154,7 +154,7 @@
           P.swing = parseFloat(swingIn.value);
           swingOut.textContent = Math.round(P.swing * 100) + '%';
         });
-        swingIn.addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+        swingIn.addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
       }
 
       const box = card.querySelector('#projBtns');

@@ -1730,6 +1730,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         return null;
       }
       src._gainNode = g;
+      src.onended = () => { src._ended = true; };
       return src;
     },
   };
@@ -2688,37 +2689,55 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 <script>
 /* =========================================================================
    NEONBOOM · core/transport.js
-   Playback clock, clip scheduling, loop region, metronome, live refresh.
+   Playback clock, look-ahead scheduler, loop region, metronome, live refresh.
+
    Position is derived from the AudioContext clock (never from rAF drift).
+   Clips are NOT all scheduled at once: a 25 ms ticker queues whatever falls
+   inside a 180 ms horizon. That makes loop points sample-accurate (the old
+   version wrapped with setTimeout), keeps tempo changes possible without a
+   restart, and stops a 64-bar project from creating hundreds of nodes up
+   front.
    ========================================================================= */
 (function (NB) {
   'use strict';
-  const { clamp, Grid, SIX_PER_BAR } = NB.util;
+  const { Grid, SIX_PER_BAR, PROJECT_BARS } = NB.util;
+
+  const LOOKAHEAD = 0.18;      // seconds of audio queued ahead of the clock
+  const TICK_MS = 25;          // how often we top the queue up
 
   const Transport = {
     playing: false,
     posSix: 0,
     startCtxTime: 0,
     startPosSix: 0,
-    loopTimer: 0,
     rafId: 0,
+    _tickTimer: 0,
     _metroTimer: 0,
     _metroLast: -1,
-    _tickFns: [],
     _refreshTimer: 0,
+    _tickFns: [],
+    _events: [],               // {clip, sample, trackIdx, when, fromSix}, sorted by `when`
+    _passStartCtx: 0,          // ctx time where the current pass begins
+    _passStartSix: 0,          // timeline position where that pass begins
 
     get engine() { return NB.Engine; },
     get project() { return NB.Project; },
 
     onTick(fn) { this._tickFns.push(fn); },
 
-    /* ---------------- clock ---------------- */
+    /* ------------------------------------------------------------- clock */
     currentSix() {
       if (!this.playing) return this.posSix;
-      const elapsed = this.engine.ctx.currentTime - this.startCtxTime;
-      return this.startPosSix + Grid.secToSix(Math.max(0, elapsed), this.project.bpm);
+      const P = this.project;
+      let six = this.startPosSix + Grid.secToSix(Math.max(0, this.engine.ctx.currentTime - this.startCtxTime), P.bpm);
+      if (P.loopEnabled && P.loopOut > P.loopIn && six >= P.loopOut) {
+        const len = P.loopOut - P.loopIn;
+        six = P.loopIn + ((six - P.loopIn) % len);
+      }
+      return six;
     },
 
+    /* ----------------------------------------------------------- control */
     play() {
       const E = this.engine;
       E.resume();
@@ -2726,8 +2745,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.playing = true;
       this.startCtxTime = E.ctx.currentTime + 0.06;
       this.startPosSix = this.posSix;
+      this._events.length = 0;
+      this._passStartCtx = this.startCtxTime;
+      this._passStartSix = this.startPosSix;
       this._metroLast = -1;
-      this._scheduleAll(this.startPosSix, this.startCtxTime);
+      this._schedulerTick();
+      this._startScheduler();
       this._startMetronome();
       this._tick();
       NB.bus.emit('transport', { playing: true });
@@ -2739,7 +2762,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this._stopAllSources();
       this.playing = false;
       cancelAnimationFrame(this.rafId);
-      clearTimeout(this.loopTimer);
+      clearInterval(this._tickTimer);
       this._stopMetronome();
       NB.bus.emit('transport', { playing: false });
     },
@@ -2747,6 +2770,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     stop() {
       this.pause();
       this.posSix = 0;
+      this._events.length = 0;
       NB.bus.emit('transport', { playing: false, stopped: true });
       NB.bus.emit('playhead');
     },
@@ -2754,7 +2778,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     rewind() {
       const was = this.playing;
       this.pause();
-      this.posSix = Project.loopEnabled && this.posSix > Project.loopIn ? Project.loopIn : 0;
+      this.posSix = this.project.loopEnabled && this.posSix > this.project.loopIn ? this.project.loopIn : 0;
       NB.bus.emit('playhead');
       if (was) this.play();
     },
@@ -2769,63 +2793,125 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
     toggle() { this.playing ? this.pause() : this.play(); },
 
-    /* ---------------- scheduling ---------------- */
-    _stopAllSources() {
-      this.engine._activeSources.forEach((src) => { try { src.stop(); } catch (e) {} });
-      this.engine._activeSources = [];
-    },
-
-    _scheduleAll(fromSix, ctxStartTime) {
-      const E = this.engine, P = this.project;
+    /* Tempo can now change while rolling: re-anchor the clock and rebuild the
+       queue instead of restarting playback. */
+    setBpm(bpm) {
+      const P = this.project;
+      if (!this.playing) { P.bpm = bpm; return; }
+      const pos = this.currentSix();
       this._stopAllSources();
-      const bpm = P.bpm;
-      const anySolo = P.tracks.some((t) => t.solo);
-
-      P.tracks.forEach((track, ti) => {
-        if (track.mute || (anySolo && !track.solo)) return;
-        track.clips.forEach((clip) => {
-          const sample = NB.Library.get(clip.sampleId);
-          if (!sample) return;
-          const src = NB.Schedule.clip(E.ctx, E.tracks[ti].gain, clip, sample, {
-            when: NB.Schedule.when(clip, fromSix, ctxStartTime, bpm, P.swing),
-            fromSix, bpm, swing: P.swing,
-          });
-          if (src) E._activeSources.push(src);
-        });
-      });
-
-      /* loop re-arm — only when the playhead is actually inside the region */
-      clearTimeout(this.loopTimer);
-      if (P.loopEnabled && fromSix < P.loopOut) {
-        const untilEnd = Grid.sixToSec(P.loopOut - fromSix, bpm);
-        this.loopTimer = setTimeout(() => {
-          if (!this.playing) return;
-          this.posSix = P.loopIn;
-          this.startPosSix = P.loopIn;
-          this.startCtxTime = E.ctx.currentTime + 0.02;
-          this._metroLast = -1;
-          this._scheduleAll(P.loopIn, this.startCtxTime);
-        }, Math.max(20, untilEnd * 1000));
-      }
+      this._events.length = 0;
+      P.bpm = bpm;
+      this.posSix = pos;
+      this.startPosSix = pos;
+      this.startCtxTime = this.engine.ctx.currentTime + 0.03;
+      this._passStartCtx = this.startCtxTime;
+      this._passStartSix = pos;
+      this._metroLast = -1;
+      this._schedulerTick();
     },
 
-    /* Re-schedule after an edit (delete / split / move / undo) so the change is
-       heard immediately instead of on the next transport start. */
+    /* Re-anchor without touching the tempo (loop toggle, swing change). */
+    reanchor() {
+      if (!this.playing) return;
+      const pos = this.currentSix();
+      this._stopAllSources();
+      this._events.length = 0;
+      this.posSix = pos;
+      this.startPosSix = pos;
+      this.startCtxTime = this.engine.ctx.currentTime + 0.03;
+      this._passStartCtx = this.startCtxTime;
+      this._passStartSix = pos;
+      this._metroLast = -1;
+      this._schedulerTick();
+    },
+
+    /* --------------------------------------------------------- scheduling */
+    _stopAllSources() {
+      const list = this.engine._activeSources;
+      list.forEach((src) => { try { src.stop(); } catch (e) {} });
+      list.length = 0;
+    },
+
+    /* Queue every clip that starts inside [passStart, end) for as many passes
+       as the horizon needs. Looping simply advances to the next pass. */
+    _fill(horizonCtx) {
+      const P = this.project, bpm = P.bpm;
+      const looping = P.loopEnabled && P.loopOut > P.loopIn;
+      const endSix = looping ? P.loopOut : PROJECT_BARS * SIX_PER_BAR;
+      const anySolo = P.tracks.some((t) => t.solo);
+      let guard = 0;
+
+      while (this._passStartCtx < horizonCtx && guard++ < 64) {
+        const passStart = this._passStartSix;
+        const passCtx = this._passStartCtx;
+
+        P.tracks.forEach((track, ti) => {
+          if (track.mute || (anySolo && !track.solo)) return;
+          track.clips.forEach((clip) => {
+            const end = clip.startSix + (clip.trimEndSix - clip.trimStartSix);
+            if (end <= passStart) return;              // already finished
+            if (clip.startSix >= endSix) return;       // outside the loop region
+            const late = Math.max(0, passStart - clip.startSix);
+            const when = passCtx + Grid.sixToSec(
+              Math.max(0, clip.startSix - passStart) + NB.Schedule.swingOffsetSix(clip, P.swing), bpm);
+            this._events.push({
+              clip,
+              sample: NB.Library.get(clip.sampleId),
+              trackIdx: ti,
+              when,
+              fromSix: clip.startSix + late,          // skips the part already gone
+            });
+          });
+        });
+
+        const passLen = Grid.sixToSec(endSix - passStart, bpm);
+        if (!looping || passLen <= 0.001) break;      // straight run: one pass
+        this._passStartCtx = passCtx + passLen;
+        this._passStartSix = P.loopIn;
+      }
+
+      if (this._events.length > 1) this._events.sort((a, b) => a.when - b.when);
+    },
+
+    _schedulerTick() {
+      if (!this.playing) return;
+      const E = this.engine;
+      const horizon = E.ctx.currentTime + LOOKAHEAD;
+      this._fill(horizon);
+
+      const list = E._activeSources;
+      while (this._events.length && this._events[0].when <= horizon) {
+        const ev = this._events.shift();
+        const bus = E.tracks[ev.trackIdx];
+        if (!ev.sample || !bus) continue;
+        const src = NB.Schedule.clip(E.ctx, bus.gain, ev.clip, ev.sample, {
+          when: ev.when, fromSix: ev.fromSix, bpm: this.project.bpm, swing: this.project.swing,
+        });
+        if (src) { src._clipId = ev.clip.id; list.push(src); }
+      }
+
+      /* drop finished nodes so the list stays small */
+      for (let i = list.length - 1; i >= 0; i--) if (list[i]._ended) list.splice(i, 1);
+    },
+
+    _startScheduler() {
+      clearInterval(this._tickTimer);
+      this._tickTimer = setInterval(() => this._schedulerTick(), TICK_MS);
+    },
+
+    /* Re-schedule after an edit so it is heard immediately, not on the next
+       transport start. Already-playing audio is stopped (a deleted clip must
+       go silent now); the gap is one refresh debounce. */
     refresh() {
       clearTimeout(this._refreshTimer);
       this._refreshTimer = setTimeout(() => {
         if (!this.playing) return;
-        const pos = this.currentSix();
-        this._stopAllSources();
-        this.startPosSix = pos;
-        this.posSix = pos;
-        this.startCtxTime = this.engine.ctx.currentTime + 0.03;
-        this._metroLast = -1;
-        this._scheduleAll(pos, this.startCtxTime);
-      }, 40);
+        this.reanchor();
+      }, 30);
     },
 
-    /* ---------------- metronome ---------------- */
+    /* -------------------------------------------------------- metronome */
     _startMetronome() {
       clearInterval(this._metroTimer);
       this._metroTimer = setInterval(() => {
@@ -2833,13 +2919,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         if (!this.playing || !P.metronome) return;
         const E = this.engine;
         const nowSix = this.currentSix();
+        if (this._metroLast > nowSix + 1) this._metroLast = -1;   // loop wrapped
         const aheadSix = Grid.secToSix(0.16, P.bpm);
         let beat = Math.ceil((nowSix + 0.0001) / 4) * 4;
-        if (this._metroLast > nowSix) beat = Math.max(beat, Math.ceil((this._metroLast + 1) / 4) * 4);
         while (beat < nowSix + aheadSix) {
           if (beat > this._metroLast) {
-            const when = this.startCtxTime + Grid.sixToSec(beat - this.startPosSix, P.bpm);
-            if (when > E.ctx.currentTime - 0.01) E.click(Math.max(when, E.ctx.currentTime), beat % SIX_PER_BAR === 0);
+            const when = E.ctx.currentTime + Grid.sixToSec(beat - nowSix, P.bpm);
+            E.click(Math.max(when, E.ctx.currentTime), beat % SIX_PER_BAR === 0);
             this._metroLast = beat;
           }
           beat += 4;
@@ -2848,7 +2934,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     },
     _stopMetronome() { clearInterval(this._metroTimer); this._metroTimer = 0; this._metroLast = -1; },
 
-    /* ---------------- tick ---------------- */
+    /* ------------------------------------------------------------- tick */
     _tick() {
       if (!this.playing) return;
       this.posSix = this.currentSix();
@@ -2857,12 +2943,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.rafId = requestAnimationFrame(() => this._tick());
     },
 
-    /* ---------------- pad recording ---------------- */
+    /* ------------------------------------------------- pad recording */
     recordPad(sampleId, trackId) {
       const P = this.project;
       const six = Math.round(this.currentSix() / P.snap) * P.snap;
       const track = P.tracks.find((t) => t.id === trackId) || P.tracks[0];
-      NB.History.push();
+      NB.History.push('Record pad');
       const clip = NB.project.newClip(sampleId, track.id, Math.max(0, six));
       track.clips.push(clip);
       NB.bus.emit('clips:changed');
@@ -3542,7 +3628,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
             if (P.loopOut - P.loopIn < this.P.snap) P.loopOut = P.loopIn + SIX_PER_BAR;
             NB.bus.emit('loop');
             NB.Persistence.saveSoon();
-            if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
+            NB.Transport.reanchor();
           };
           r.addEventListener('pointermove', move);
           r.addEventListener('pointerup', up, { once: true });
@@ -4337,7 +4423,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           P.swing = parseFloat(swingIn.value);
           swingOut.textContent = Math.round(P.swing * 100) + '%';
         });
-        swingIn.addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+        swingIn.addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
       }
 
       const box = card.querySelector('#projBtns');
@@ -4502,7 +4588,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         if (P.loopEnabled && P.loopOut <= P.loopIn) { P.loopIn = 0; P.loopOut = 16 * 4; }
         NB.Timeline.draw();
         this.syncLoopBtn();
-        if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
+        NB.Transport.reanchor();
         NB.Persistence.saveSoon();
         haptic(8);
       });
@@ -4519,19 +4605,17 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
       $$('[data-tempo]').forEach((b) => b.addEventListener('click', () => {
         const P = NB.Project;
-        P.bpm = clamp(P.bpm + parseInt(b.dataset.tempo, 10), 40, 220);
-        this.bpmInput.value = P.bpm;
+        NB.Transport.setBpm(clamp(P.bpm + parseInt(b.dataset.tempo, 10), 40, 220));
+        this.bpmInput.value = NB.Project.bpm;
         NB.Fx.retime();
-        if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
         NB.Persistence.saveSoon();
       }));
 
       this.bpmInput.addEventListener('change', () => {
         const P = NB.Project;
-        P.bpm = clamp(parseInt(this.bpmInput.value || '90', 10), 40, 220);
-        this.bpmInput.value = P.bpm;
+        NB.Transport.setBpm(clamp(parseInt(this.bpmInput.value || '90', 10), 40, 220));
+        this.bpmInput.value = NB.Project.bpm;
         NB.Fx.retime();
-        if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
         NB.Persistence.saveSoon();
       });
 
@@ -4608,12 +4692,11 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         </div>`);
       const s = $('#sheet');
       const setBpm = (v) => {
-        P.bpm = clamp(v, 40, 220);
-        $('#tsBpm', s).value = P.bpm;
-        this.bpmInput.value = P.bpm;
+        NB.Transport.setBpm(clamp(v, 40, 220));
+        $('#tsBpm', s).value = NB.Project.bpm;
+        this.bpmInput.value = NB.Project.bpm;
         NB.Fx.retime();
         this.syncLcdSub();
-        if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
         NB.Persistence.saveSoon();
       };
       $('#tsDown', s).addEventListener('click', () => setBpm(P.bpm - 1));
@@ -4831,7 +4914,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         P.swing = parseFloat(e.target.value);
         $('#shSwingVal', s).textContent = Math.round(P.swing * 100) + '%';
       });
-      $('#shSwing', s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      $('#shSwing', s).addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
       $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.loadDemo(); });
       $('#shSave', s).addEventListener('click', () => { this.closeSheet(); this.saveProjectFile(); });
@@ -5263,7 +5346,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '1.4.0',
+    version: '1.5.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

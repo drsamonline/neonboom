@@ -89,6 +89,7 @@
         return null;
       }
       src._gainNode = g;
+      src.onended = () => { src._ended = true; };
       return src;
     },
   };

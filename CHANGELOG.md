@@ -5,6 +5,35 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.5.0] — 2026-11-11
+
+The transport rewrite: a look-ahead scheduler replaces "schedule everything, then wrap with a
+`setTimeout`".
+
+### Changed
+- **Look-ahead scheduling.** A 25 ms ticker queues whatever falls inside a 180 ms horizon instead
+  of scheduling the whole arrangement at `play()`. Consequences:
+  - loop points are **sample-accurate** — the next pass is queued on the audio clock, not by a
+    timer that drifts by tens of milliseconds;
+  - **tempo can change while rolling** (`Transport.setBpm`) — the clock re-anchors and the queue
+    rebuilds instead of the old pause/play restart;
+  - a 64-bar project no longer builds hundreds of `AudioBufferSourceNode`s up front — the queue
+    holds a window, not the arrangement.
+- `currentSix()` computes the loop wrap arithmetically instead of re-anchoring on a timer, so the
+  playhead and the audio agree at the seam.
+- Loop toggle and swing changes call `Transport.reanchor()` rather than stopping playback.
+- Metronome scheduling is relative to the playhead, so it survives a loop wrap.
+
+### Removed
+- `Transport._scheduleAll()` and the loop re-entry `setTimeout` — both replaced by `_fill()` and
+  `_schedulerTick()`.
+
+### Fixed
+- Deleting a clip while rolling now silences that clip specifically; sources carry `_clipId` so the
+  scheduler can be checked, and the test asserts on the id rather than on a list length.
+
+---
+
 ## [1.4.0] — 2026-11-11
 
 Mixer sends, a real history panel, clipboard, and the bitcrusher finally moves off the

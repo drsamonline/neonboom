@@ -117,14 +117,13 @@ console.log('\n2 · transport, clips, undo');
     NB.Project.tracks[0].mute = false; NB.Engine.applyMix(NB.Project.tracks);
     NB.Transport.pause();
 
-    // delete while playing re-schedules the remaining clips
-    NB.Transport.play(); await sleep(200);
-    const before2 = NB.Engine._activeSources.length;
+    // delete while playing must silence that clip's sources
+    NB.Transport.play(); await sleep(250);
     const id = NB.Project.tracks[1].clips[0].id;
     NB.Timeline.select(id); NB.Timeline.deleteSelected();
-    await sleep(200);
-    o.deleteReschedules = NB.Engine._activeSources.length < before2;
-    o.before2 = before2; o.after2 = NB.Engine._activeSources.length;
+    await sleep(250);
+    o.sourcesForDeleted = NB.Engine._activeSources.filter((src) => src._clipId === id).length;
+    o.deleteReschedules = o.sourcesForDeleted === 0;
     NB.Transport.pause();
     return o;
   });
@@ -138,7 +137,7 @@ console.log('\n2 · transport, clips, undo');
   check('split at playhead', o.split);
   check('undo after split', o.splitUndo);
   check('mute silences playing audio', o.muteLive);
-  check('delete during playback re-schedules', o.deleteReschedules, { before: o.before2, after: o.after2 });
+  check('delete during playback silences the clip', o.deleteReschedules, { sources: o.sourcesForDeleted });
   check('no console errors', errors.length === 0, errors.slice(0, 3));
   await page.close(); await page.__ctx.close();
 }
@@ -595,6 +594,47 @@ console.log('\n12 · sends, clipboard, history, worklet');
   check('bitcrusher runs as an AudioWorkletNode', o.crusherIsWorklet);
   check('crusher parameters are settable', o.setCrush && o.crushBits === 4 && o.crushHasParams, { bits: o.crushBits, params: o.crushHasParams });
   check('no ScriptProcessor deprecation warning', !errors.some((e) => /ScriptProcessorNode is deprecated/i.test(e)), errors.slice(0, 2));
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await page.__ctx.close();
+}
+
+/* ------------------------------------------------- 13. look-ahead scheduler */
+console.log('\n13 · look-ahead scheduler');
+{
+  const { page, errors } = await open(APP);
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), o = {};
+    const totalClips = NB.Project.tracks.reduce((n, t) => n + t.clips.length, 0);
+
+    NB.Project.loopEnabled = true; NB.Project.loopIn = 0; NB.Project.loopOut = 16;   // 1 bar
+    NB.Transport.seekTo(0);
+    NB.Transport.play();
+    await sleep(300);
+    o.sourcesEarly = NB.Engine._activeSources.length;
+    o.totalClips = totalClips;
+    o.queuedNotEverything = o.sourcesEarly < totalClips;
+
+    await sleep(3000);                                    // past the loop end
+    o.stillPlaying = NB.Transport.playing;
+    o.posAfterWrap = +NB.Transport.currentSix().toFixed(2);
+    o.wrapped = o.posAfterWrap < 16;
+
+    const before = NB.Transport.currentSix();
+    NB.Transport.setBpm(140);
+    await sleep(400);
+    o.playingAfterBpm = NB.Transport.playing;
+    o.bpmApplied = NB.Project.bpm === 140;
+    o.clockContinued = Math.abs(NB.Transport.currentSix() - before) > 0.2;
+
+    NB.Transport.pause();
+    o.sourcesAfterPause = NB.Engine._activeSources.length;
+    return o;
+  });
+  check('only a window of clips is queued, not the whole project',
+    o.queuedNotEverything, { queued: o.sourcesEarly, total: o.totalClips });
+  check('loop wraps and keeps playing', o.stillPlaying && o.wrapped, o.posAfterWrap);
+  check('tempo changes while rolling', o.bpmApplied && o.playingAfterBpm && o.clockContinued);
+  check('pause clears every queued source', o.sourcesAfterPause === 0, o.sourcesAfterPause);
   check('no console errors', errors.length === 0, errors.slice(0, 3));
   await page.close(); await page.__ctx.close();
 }

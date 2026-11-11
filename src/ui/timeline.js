@@ -665,7 +665,7 @@
             if (P.loopOut - P.loopIn < this.P.snap) P.loopOut = P.loopIn + SIX_PER_BAR;
             NB.bus.emit('loop');
             NB.Persistence.saveSoon();
-            if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
+            NB.Transport.reanchor();
           };
           r.addEventListener('pointermove', move);
           r.addEventListener('pointerup', up, { once: true });

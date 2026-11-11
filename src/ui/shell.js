@@ -65,7 +65,7 @@
         if (P.loopEnabled && P.loopOut <= P.loopIn) { P.loopIn = 0; P.loopOut = 16 * 4; }
         NB.Timeline.draw();
         this.syncLoopBtn();
-        if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
+        NB.Transport.reanchor();
         NB.Persistence.saveSoon();
         haptic(8);
       });
@@ -82,19 +82,17 @@
 
       $$('[data-tempo]').forEach((b) => b.addEventListener('click', () => {
         const P = NB.Project;
-        P.bpm = clamp(P.bpm + parseInt(b.dataset.tempo, 10), 40, 220);
-        this.bpmInput.value = P.bpm;
+        NB.Transport.setBpm(clamp(P.bpm + parseInt(b.dataset.tempo, 10), 40, 220));
+        this.bpmInput.value = NB.Project.bpm;
         NB.Fx.retime();
-        if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
         NB.Persistence.saveSoon();
       }));
 
       this.bpmInput.addEventListener('change', () => {
         const P = NB.Project;
-        P.bpm = clamp(parseInt(this.bpmInput.value || '90', 10), 40, 220);
-        this.bpmInput.value = P.bpm;
+        NB.Transport.setBpm(clamp(parseInt(this.bpmInput.value || '90', 10), 40, 220));
+        this.bpmInput.value = NB.Project.bpm;
         NB.Fx.retime();
-        if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
         NB.Persistence.saveSoon();
       });
 
@@ -171,12 +169,11 @@
         </div>`);
       const s = $('#sheet');
       const setBpm = (v) => {
-        P.bpm = clamp(v, 40, 220);
-        $('#tsBpm', s).value = P.bpm;
-        this.bpmInput.value = P.bpm;
+        NB.Transport.setBpm(clamp(v, 40, 220));
+        $('#tsBpm', s).value = NB.Project.bpm;
+        this.bpmInput.value = NB.Project.bpm;
         NB.Fx.retime();
         this.syncLcdSub();
-        if (NB.Transport.playing) { NB.Transport.pause(); NB.Transport.play(); }
         NB.Persistence.saveSoon();
       };
       $('#tsDown', s).addEventListener('click', () => setBpm(P.bpm - 1));
@@ -394,7 +391,7 @@
         P.swing = parseFloat(e.target.value);
         $('#shSwingVal', s).textContent = Math.round(P.swing * 100) + '%';
       });
-      $('#shSwing', s).addEventListener('change', () => { NB.Transport.refresh(); NB.Persistence.saveSoon(); });
+      $('#shSwing', s).addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
       $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.loadDemo(); });
       $('#shSave', s).addEventListener('click', () => { this.closeSheet(); this.saveProjectFile(); });

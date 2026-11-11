@@ -17,8 +17,11 @@ Legend: ✅ implemented and tested · 🔎 implemented, verified manually · ⚠
 | `rewind()` | Return to loop-in if the playhead is inside the loop, else to 0; resumes if it was playing | ✅ |
 | `seekTo(six)` | Jump to a sixteenth position, rescheduling when rolling | ✅ |
 | `toggle()` | Play/pause for the button and the space bar | ✅ |
-| `currentSix()` | Position derived from `AudioContext.currentTime`, so it never drifts from the audio | ✅ |
-| `_scheduleAll(from, t)` | Schedules clips that start after `from` plus any clip that straddles it (with buffer offset), and arms the loop re-entry timer | ✅ |
+| `currentSix()` | Position derived from `AudioContext.currentTime`, with the loop wrap computed arithmetically | ✅ |
+| `_fill(horizonCtx)` | Queues every clip inside the horizon, one pass at a time; looping advances to the next pass | ✅ |
+| `_schedulerTick()` | 25 ms ticker: tops the queue up to the 180 ms horizon, prunes finished nodes | ✅ |
+| `setBpm(v)` | Tempo change without stopping playback (re-anchors and rebuilds) | ✅ |
+| `reanchor()` | Re-anchor after a loop or swing change | ✅ |
 | `refresh()` | Debounced re-schedule after an edit — delete a clip mid-playback and it stops | ✅ |
 | `_startMetronome()` / `_stopMetronome()` | 40 ms look-ahead scheduler that places clicks on the audio clock, accenting bar starts | 🔎 |
 | `recordPad(sampleId, trackId)` | Places a clip at the quantised playhead on the selected track | ✅ |
@@ -167,7 +170,7 @@ on first run → reveal. ✅
 | 1 | Bitcrusher falls back to `ScriptProcessorNode` where AudioWorklet is unavailable | Some locked-down browsers and old Safari | Nothing to do; the warning is gone in every modern browser |
 | 2 | No per-clip pitch or reverse | Would need a second playback path and a peak re-render | Roadmap |
 | 3 | Clip gain is applied at schedule time, not as a live node | Keeps the graph small | Add a per-clip gain node if automation lands |
-| 4 | Tempo changes restart playback | Simple, glitch-free rescheduling | Look-ahead scheduler (roadmap) |
+| 4 | — | Tempo changes now apply while rolling (look-ahead scheduler) | — |
 | 7 | Pitch is sampler-style (changes speed) | Matches the mental model of a sampler and needs no time-stretch | WSOLA time-stretch (roadmap) |
 | 5 | No pinch-to-zoom on the timeline | Native panning is more valuable on touch than a gesture that fights it | Optional: two-finger zoom in edit mode |
 | 6 | Imported samples are assumed to match the project tempo | No beat detection | Tempo field per sample + optional onset estimate |

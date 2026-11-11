@@ -47,13 +47,13 @@ entirely after the first visit.
 
 | # | Idea | Effort | Bloat | Gain |
 |---|---|---|---|---|
-| 6 | **Look-ahead scheduler** (25 ms timer, 120 ms horizon) instead of "schedule everything at play". Enables tempo changes without a restart and gapless loop points. | M | med | removes the audible gap at loop boundaries |
+| 6 | ~~Look-ahead scheduler~~ — **shipped in 1.5.0** (25 ms tick, 180 ms horizon, sample-accurate loop points, live tempo) | — | — | — |
 | 7 | **Reuse `AudioBufferSourceNode` gain nodes** per track instead of one gain per clip. | S | low | fewer nodes on dense arrangements |
 | 8 | ~~Move the bitcrusher to AudioWorklet~~ — **shipped in 1.4.0** (data: URL module, ScriptProcessor fallback) | — | — | — |
 | 9 | **Off-main-thread peaks**: compute peaks in a Web Worker when a sample is imported. | S | low | import of a 5-minute file no longer janks |
 | 10 | Draw waveforms from a **pre-baked path per sample** (`Path2D` scaled per clip) instead of per-pixel rects. | S | low | ~2× faster clip drawing at high zoom |
 | 11 | **Virtualise track rows** vertically as well as horizontally (already horizontal). | S | low | stays smooth past ~30 tracks |
-| 12 | Replace the 30 fps `setInterval` meters with a single rAF loop that shares the playhead tick. | S | low | one timer instead of three |
+| 12 | Replace the 30 fps `setInterval` meters with a single rAF loop that shares the playhead tick. | S | low | three timers → one (the scheduler added a fourth) |
 
 ### 1.3 Perceived speed
 
@@ -217,7 +217,7 @@ The loop cache remains the real win; the pack is for wrapped builds and offline 
 
 1. ~~Cache rendered loops (1) + lazy render (2)~~ — **done in 1.2.0**.
 2. ~~Per-clip pitch/reverse (22), stem export (24), clip fades (25), swing (33)~~ — **done in 1.2.0**.
-3. **Look-ahead scheduler** (6) — unlocks tempo changes and gapless loops.
+3. ~~Look-ahead scheduler (6)~~ — **done in 1.5.0**.
 4. **AudioWorklet bitcrusher** (8) — removes the last deprecation warning.
 5. **Automation lanes** (23) and **MIDI-in** (26) — the two features that change the ceiling.
 6. **Optional sample pack** (53–57) — the last 3 s of cold boot, at zero cost to the core file.

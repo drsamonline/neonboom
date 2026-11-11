@@ -51,8 +51,10 @@ jobs:
           mkdir -p electron/app/pack
           cp dist/neonboom.html electron/app/index.html
           cp pack/neonboom-pack-v1.zip electron/app/pack/
-          # the shell serves from file://, so tell the app the pack is bundled
-          sed -i 's|<title>|<meta name="neonboom-pack-local" content="1">\n<title>|' electron/app/index.html
+          # the shell serves from file://, so tell the app the pack is bundled.
+          # node, not sed: BSD sed on macOS wants -i '' and this has to be portable
+          node -e "const fs=require('fs');const p='electron/app/index.html';const h=fs.readFileSync(p,'utf8');fs.writeFileSync(p,h.replace('<title>','<meta name=\"neonboom-pack-local\" content=\"1\">\n<title>'))"
+          grep -c 'neonboom-pack-local' electron/app/index.html
       - name: Package
         working-directory: electron
         run: |

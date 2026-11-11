@@ -11,7 +11,7 @@ mkdir -p electron/app/pack
 cp dist/neonboom.html electron/app/index.html
 cp pack/neonboom-pack-v1.zip electron/app/pack/
 # tell the app the pack is bundled (it cannot fetch from file://)
-sed -i 's|<title>|<meta name="neonboom-pack-local" content="1">\n<title>|' electron/app/index.html
+node -e "const fs=require('fs');const p='electron/app/index.html';const h=fs.readFileSync(p,'utf8');fs.writeFileSync(p,h.replace('<title>','<meta name=\"neonboom-pack-local\" content=\"1\">\n<title>'))"
 
 # 3. run or package
 cd electron && npm install

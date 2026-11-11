@@ -530,7 +530,7 @@
           if (Math.abs(p.x - self.drag.startX) > 3 && !self.drag.moved.v) {
             self.drag.moved.v = true;
             clearTimeout(self.longPressTimer);
-            if (self._pendingSnap) { NB.History.commit(self._pendingSnap); self._pendingSnap = null; }
+            if (self._pendingSnap) { NB.History.commit(self._pendingSnap, self.drag.type === 'trim' ? 'Trim clip' : 'Move clip'); self._pendingSnap = null; }
           }
           if (!self.drag.moved.v) return;
 
@@ -707,6 +707,40 @@
       NB.bus.emit('mode', m);
     },
 
+    /* ---- clipboard ---------------------------------------------------- */
+    copySelected() {
+      const f = this.selectedClipId ? NB.project.findClip(this.selectedClipId) : null;
+      if (!f) { toast('Select a clip first', 'warn'); return false; }
+      this.clipboard = JSON.parse(JSON.stringify(f.clip));
+      toast('Copied', '', 1000);
+      return true;
+    },
+
+    cutSelected() {
+      if (!this.copySelected()) return false;
+      this.deleteSelected();
+      return true;
+    },
+
+    paste() {
+      if (!this.clipboard) { toast('Clipboard is empty', 'warn'); return false; }
+      const P = this.P;
+      const track = this.tracks.find((t) => t.id === this.selectedTrackId) || this.tracks[0];
+      NB.History.push('Paste clip');
+      const clip = JSON.parse(JSON.stringify(this.clipboard));
+      clip.id = uid('clp');
+      clip.trackId = track.id;
+      const six = Math.round(NB.Transport.currentSix() / P.snap) * P.snap;
+      clip.startSix = Math.max(0, six);
+      track.clips.push(clip);
+      this.selectedClipId = clip.id;
+      this.selectedTrackId = track.id;
+      NB.bus.emit('clips:changed');
+      NB.Persistence.saveSoon();
+      haptic(6);
+      return true;
+    },
+
     select(clipId) {
       this.selectedClipId = clipId;
       const f = clipId ? NB.project.findClip(clipId) : null;
@@ -723,7 +757,7 @@
       const six = Math.round(NB.Transport.currentSix());
       const start = clip.startSix, end = start + (clip.trimEndSix - clip.trimStartSix);
       if (six <= start + 0 || six >= end) { toast('Playhead is not over the clip', 'warn'); return; }
-      NB.History.push();
+      NB.History.push('Split clip');
       const cut = six - start;
       const second = JSON.parse(JSON.stringify(clip));
       second.id = uid('clp');
@@ -739,7 +773,7 @@
 
     deleteSelected() {
       if (!this.selectedClipId) { toast('Nothing selected', 'warn'); return; }
-      NB.History.push();
+      NB.History.push('Delete clip');
       NB.project.removeClip(this.selectedClipId);
       this.selectedClipId = null;
       NB.bus.emit('clips:changed');
@@ -753,7 +787,7 @@
       if (!id) { toast('Nothing selected', 'warn'); return; }
       const f = NB.project.findClip(id);
       if (!f) return;
-      NB.History.push();
+      NB.History.push('Duplicate clip');
       const dup = JSON.parse(JSON.stringify(f.clip));
       dup.id = uid('clp');
       dup.startSix = f.clip.startSix + (f.clip.trimEndSix - f.clip.trimStartSix);
@@ -768,7 +802,7 @@
       if (!id) return;
       const f = NB.project.findClip(id);
       if (!f) return;
-      NB.History.push();
+      NB.History.push('Nudge clip');
       f.clip.startSix = Math.max(0, f.clip.startSix + sixDelta);
       NB.bus.emit('clips:changed');
       NB.Transport.refresh();
@@ -780,7 +814,7 @@
       if (!id) { toast('Nothing selected', 'warn'); return; }
       const f = NB.project.findClip(id);
       if (!f) return;
-      NB.History.push();
+      NB.History.push('Quantise');
       const s = this.P.snap;
       f.clip.startSix = Math.round(f.clip.startSix / s) * s;
       NB.bus.emit('clips:changed');

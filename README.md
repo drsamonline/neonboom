@@ -11,11 +11,11 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.3.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.4.0-ffb020)](CHANGELOG.md)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
-[![Tests](https://img.shields.io/badge/headless_tests-109_assertions_passing-41d18a)](#testing)
+[![Tests](https://img.shields.io/badge/headless_tests-122_assertions_passing-41d18a)](#testing)
 [![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
 [![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
@@ -45,7 +45,7 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 | 🎚 **Clip sound** | Per-clip **pitch (±12 st)**, **reverse**, **fade in / out** envelopes, gain, and project **swing** — all honoured by playback *and* export. |
 | 🔌 **Offline** | Service worker + installable PWA, plus a **single 190 KB HTML file** that runs from `file://` with zero requests. |
 | 📱 **Responsive** | Three separately designed layouts: desktop (3 columns), tablet (2), phone (tab bar + bottom sheets, 40 px targets, long-press actions). |
-| ↩️ **Safe** | 80-step undo/redo, autosave to IndexedDB every 650 ms, project files you can save and reopen. |
+| ↩️ **Safe** | 80-step undo/redo with a visible history, autosave to IndexedDB every 650 ms, project files you can save and reopen. |
 
 ---
 
@@ -109,6 +109,7 @@ Opening `index.html` straight from disk also works — the app is plain classic 
 | Metronome | <kbd>K</kbd> | Undo / redo | <kbd>Ctrl</kbd> <kbd>Z</kbd> / <kbd>Ctrl</kbd> <kbd>Y</kbd> |
 | Split at playhead | <kbd>S</kbd> | Zoom / fit | <kbd>−</kbd> <kbd>+</kbd> <kbd>F</kbd> |
 | Delete clip | <kbd>Del</kbd> | Save project file | <kbd>Ctrl</kbd> <kbd>S</kbd> |
+| Copy / cut / paste clip | <kbd>Ctrl</kbd> <kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> | History panel | drawer → *History* |
 | Mute track | <kbd>M</kbd> | Audition pads | <kbd>1</kbd>…<kbd>0</kbd> <kbd>Q</kbd> <kbd>W</kbd> |
 
 On a phone: tap a pad to hear it, tap a clip to select it, **long-press** a clip for duplicate / split / quantise / delete, and use the **Scroll / Edit** switch above the timeline to choose between panning and dragging.
@@ -177,7 +178,7 @@ npm run build:pack             # re-renders pack/neonboom-pack-v1.zip from the s
 npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **109 assertions across three harnesses (85 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
+Latest run: **122 assertions across three harnesses (98 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
 
 ---
 
@@ -202,7 +203,6 @@ npx cap add android && npx cap sync && npx cap open android
 
 See [ENHANCEMENTS.md](ENHANCEMENTS.md) for the full, costed list. The short version:
 
-- AudioWorklet bitcrusher (the `ScriptProcessorNode` fallback is deprecated, though still universally supported)
 - MIDI-in for pads and knobs · automation lanes
 - Share links with compressed project state in the URL · sample editor (trim/normalise)
 - ~~Optional sample pack~~ — shipped in 1.3.0: `pack/neonboom-pack-v1.zip`, auto-used by bundled builds

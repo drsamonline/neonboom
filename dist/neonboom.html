@@ -354,17 +354,23 @@ select{cursor:pointer;}
 .mixRow{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; align-items:flex-start;}
 .mstrip{
   width:78px; flex:0 0 auto; background:var(--bg-2); border:1px solid var(--line);
-  border-radius:var(--r-md); padding:8px 7px; display:flex; flex-direction:column; gap:6px; align-items:center;
+  border-radius:var(--r-md); padding:7px 6px; display:flex; flex-direction:column; gap:5px; align-items:center;
 }
 .mstrip.sel{border-color:var(--amber);}
 .mstrip .mname{font-size:9.5px; font-weight:700; text-align:center; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .mstrip .mtrk{font-family:var(--mono); font-size:8px; color:var(--ink-3);}
-.mstrip .mfader{width:22px; height:104px; writing-mode:vertical-lr; direction:rtl; -webkit-appearance:none; appearance:none;}
+.mstrip .mfader{width:22px; height:86px; writing-mode:vertical-lr; direction:rtl; -webkit-appearance:none; appearance:none;}
 .mstrip .mfader::-webkit-slider-runnable-track{width:4px; height:100%; background:var(--bg-4); border:1px solid var(--line); border-radius:2px;}
 .mstrip .mfader::-webkit-slider-thumb{-webkit-appearance:none; width:20px; height:12px; border-radius:2px;
   background:linear-gradient(180deg,#5b6675,#3a4350); border:1px solid #6b7787; margin-left:-9px;}
 .mstrip .mval{font-family:var(--mono); font-size:9px; color:var(--ink-1);}
 .mstrip .mpan{width:100%;}
+.mstrip .msend{display:flex; align-items:center; gap:3px; width:100%;}
+.mstrip .msend b{font-size:8px; color:var(--ink-3); font-weight:700; width:7px; flex:0 0 auto;}
+.mstrip .msend input{flex:1; min-width:0; height:14px;}
+.mstrip .msend input::-webkit-slider-runnable-track{height:3px;}
+.mstrip .msend input::-webkit-slider-thumb{width:8px; height:8px; margin-top:-3px;}
+.mstrip .msend input::-moz-range-thumb{width:8px;height:8px;}
 .mstrip .mbtns{display:flex; gap:4px; width:100%;}
 .mstrip .mbtns .tbtn{flex:1; height:22px; font-size:9px; font-weight:800; border-radius:3px;
   border:1px solid var(--line-2); background:var(--bg-3); color:var(--ink-2);}
@@ -381,6 +387,12 @@ select{cursor:pointer;}
 .toggleChip{font-size:8.5px; border:1px solid var(--line-2); border-radius:10px; padding:2px 7px; color:var(--ink-2);
   letter-spacing:.08em; cursor:pointer; background:var(--bg-3);}
 .toggleChip.on{background:var(--amber); border-color:var(--amber); color:#1a1200;}
+
+.histRow{display:flex; justify-content:space-between; align-items:center; gap:12px; width:100%;
+  background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:9px 12px; margin-bottom:5px; color:var(--ink-0); font-size:12px; text-align:left; min-height:38px;}
+.histRow:hover{border-color:var(--amber); color:var(--amber);}
+.histStep{font-family:var(--mono); font-size:10px; color:var(--ink-3);}
 
 /* export + help panes */
 .pane{max-width:640px;}
@@ -678,6 +690,7 @@ select{cursor:pointer;}
   <div id="drawer" data-open="false">
     <div class="drawerTabs" id="drawerTabs">
       <button data-drawer="mixer">Mixer</button>
+      <button data-drawer="history">History</button>
       <button data-drawer="fx">FX rack</button>
       <button data-drawer="export">Export</button>
       <button data-drawer="help">Help</button>
@@ -1297,6 +1310,68 @@ select{cursor:pointer;}
   'use strict';
   const { clamp } = NB.util;
 
+  /* ---------------------------------------------------------- bitcrusher
+     AudioWorklet where available (off the main thread, no deprecation
+     warning), ScriptProcessorNode as the fallback for locked-down browsers.
+     The module is a Blob URL so it works from file:// and inside any
+     OfflineAudioContext without shipping a second file. */
+  const CRUSHER_SRC = `
+class NB_Bitcrusher extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [
+      { name: 'bits', defaultValue: 8, minValue: 1, maxValue: 16, automationRate: 'k-rate' },
+      { name: 'reduction', defaultValue: 4, minValue: 1, maxValue: 64, automationRate: 'k-rate' },
+    ];
+  }
+  constructor() { super(); this.phase = 0; this.held = []; }
+  process(inputs, outputs, params) {
+    const input = inputs[0], output = outputs[0];
+    if (!input || input.length === 0) return true;
+    const step = Math.pow(0.5, params.bits[0]);
+    const red = Math.max(1, Math.round(params.reduction[0]));
+    for (let ch = 0; ch < output.length; ch++) {
+      const inp = input[ch] || input[0];
+      const out = output[ch];
+      let held = this.held[ch] || 0;
+      for (let i = 0; i < out.length; i++) {
+        if (this.phase % red === 0) held = step * Math.round(inp[i] / step);
+        out[i] = held;
+        this.phase++;
+      }
+      this.held[ch] = held;
+    }
+    return true;
+  }
+}
+registerProcessor('nb-bitcrusher', NB_Bitcrusher);
+`;
+
+  const Worklet = {
+    _url: null,
+    _ready: new WeakSet(),
+    url() {
+      /* data:, not blob: — a blob URL inherits the page origin, and a page
+         opened from file:// has an opaque origin, which the worklet loader
+         refuses. The data URL works from file://, http(s) and Electron alike. */
+      if (!this._url) {
+        this._url = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(CRUSHER_SRC);
+      }
+      return this._url;
+    },
+    supported(ctx) { return !!(ctx.audioWorklet && ctx.audioWorklet.addModule && typeof AudioWorkletNode !== 'undefined'); },
+    async prepare(ctx) {
+      if (!this.supported(ctx) || this._ready.has(ctx)) return this._ready.has(ctx);
+      try {
+        await ctx.audioWorklet.addModule(this.url());
+        this._ready.add(ctx);
+        return true;
+      } catch (err) {
+        console.warn('AudioWorklet unavailable — falling back to ScriptProcessor', err);
+        return false;
+      }
+    },
+  };
+
   /* Synthetic reverb impulse: exponentially decaying stereo noise. */
   const ImpulseResponse = {
     generate(ctx, seconds, decay) {
@@ -1322,7 +1397,15 @@ select{cursor:pointer;}
       this._previewSrc = null;
       this._vuBuf = null;
       this._meterBuf = null;
+    }
+
+    /* Async because the AudioWorklet module has to be registered before the
+       master chain can use it. Callers that cannot await (tests) still work:
+       buildMasterChain() falls back to ScriptProcessorNode. */
+    async init() {
+      await Worklet.prepare(this.ctx);
       this._buildMasterChain(this.ctx);
+      return this;
     }
 
     /* master chain:
@@ -1363,8 +1446,19 @@ select{cursor:pointer;}
          every render. Guarded: fall back to a passthrough gain. */
       const bitDry = ctx.createGain(); bitDry.gain.value = 1;
       const bitWet = ctx.createGain(); bitWet.gain.value = 0;
-      let crusher;
-      try {
+      let crusher = null;
+
+      if (Worklet._ready.has(ctx)) {
+        try {
+          crusher = new AudioWorkletNode(ctx, 'nb-bitcrusher', {
+            numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+          });
+          crusher._bits = 8; crusher._reduction = 4;
+          crusher._worklet = true;
+        } catch (err) { crusher = null; }
+      }
+
+      if (!crusher) try {
         crusher = ctx.createScriptProcessor(1024, 2, 2);
         crusher._bits = 8; crusher._reduction = 4;
         crusher.onaudioprocess = (e) => {
@@ -1403,22 +1497,41 @@ select{cursor:pointer;}
 
       const chain = { input, eqLow, eqMid, eqHigh, delay, feedback, delayWet,
         convolver, reverbWet, crusher, bitDry, bitWet, comp, masterGain, analyser };
+      chain.setCrush = (bits, reduction) => {
+        crusher._bits = bits; crusher._reduction = reduction;
+        if (crusher._worklet && crusher.parameters) {
+          const t = ctx.currentTime;
+          crusher.parameters.get('bits').setValueAtTime(bits, t);
+          crusher.parameters.get('reduction').setValueAtTime(reduction, t);
+        }
+      };
       if (ctx === this.ctx) this.master = chain;
       return chain;
     }
 
-    /* per-track bus: gain → panner → master.input, plus a meter tap */
+    /* per-track bus:
+         gain → panner ─┬→ master.input        (dry)
+                        ├→ sendA → master.delay     (post-fader delay send)
+                        └→ sendB → master.convolver (post-fader reverb send)
+       plus a meter tap on the fader. */
     buildTrackBus(ctx, masterChain) {
       const gain = ctx.createGain(); gain.gain.value = 0.85;
       const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-      gain.connect(panner || masterChain.input);
-      if (panner) panner.connect(masterChain.input);
+      const post = panner || gain;
+      gain.connect(post);
+      post.connect(masterChain.input);
+
+      const sendA = ctx.createGain(); sendA.gain.value = 0;
+      const sendB = ctx.createGain(); sendB.gain.value = 0;
+      post.connect(sendA); sendA.connect(masterChain.delay);
+      post.connect(sendB); sendB.connect(masterChain.convolver);
+
       let analyser = null;
       if (ctx.createAnalyser) {
         analyser = ctx.createAnalyser(); analyser.fftSize = 128;
         gain.connect(analyser);
       }
-      return { gain, panner, analyser };
+      return { gain, panner, sendA, sendB, analyser };
     }
 
     ensureTrackBuses(count) {
@@ -1427,7 +1540,10 @@ select{cursor:pointer;}
       }
       while (this.tracks.length > count) {
         const b = this.tracks.pop();
-        try { b.gain.disconnect(); b.panner && b.panner.disconnect(); } catch (e) {}
+        try {
+          b.gain.disconnect(); b.panner && b.panner.disconnect();
+          b.sendA && b.sendA.disconnect(); b.sendB && b.sendB.disconnect();
+        } catch (e) {}
       }
     }
 
@@ -1439,6 +1555,11 @@ select{cursor:pointer;}
       const b = this.tracks[i]; if (!b) return;
       if (b.panner) b.panner.pan.setTargetAtTime(clamp(p, -1, 1), this.ctx.currentTime, 0.01);
     }
+    setTrackSends(i, a, b2) {
+      const b = this.tracks[i]; if (!b) return;
+      if (b.sendA) b.sendA.gain.setTargetAtTime(clamp(a || 0, 0, 1), this.ctx.currentTime, 0.01);
+      if (b.sendB) b.sendB.gain.setTargetAtTime(clamp(b2 || 0, 0, 1), this.ctx.currentTime, 0.01);
+    }
     /* Mute/solo is applied as a real gain change, so it is audible instantly
        on already-playing sources — not just the next scheduling pass. */
     applyMix(tracks) {
@@ -1447,6 +1568,7 @@ select{cursor:pointer;}
         const audible = !t.mute && (!anySolo || t.solo);
         this.setTrackVolume(i, audible ? t.vol : 0);
         this.setTrackPan(i, t.pan);
+        this.setTrackSends(i, audible ? (t.sendA || 0) : 0, audible ? (t.sendB || 0) : 0);
       });
     }
 
@@ -1512,6 +1634,7 @@ select{cursor:pointer;}
 
   NB.AudioEngine = AudioEngine;
   NB.ImpulseResponse = ImpulseResponse;
+  NB.AudioWorklet = Worklet;
 })(window.NB = window.NB || {});
 
 </script>
@@ -1689,6 +1812,7 @@ select{cursor:pointer;}
     const sr = engine.ctx.sampleRate;                 // must match live context
     const totalSec = Grid.sixToSec(endSix - startSix, bpm) + tailSeconds(fx, bpm);
     const oac = new OfflineAudioContext(2, Math.ceil(totalSec * sr), sr);
+    await NB.AudioWorklet.prepare(oac);      // same crusher, offline
 
     const om = engine._buildMasterChain(oac, oac.destination);
     om.eqLow.gain.value = fx.eqLow;
@@ -1699,8 +1823,7 @@ select{cursor:pointer;}
     om.delayWet.gain.value = fx.delayMix;
     om.convolver.buffer = NB.ImpulseResponse.generate(oac, fx.reverbSize, fx.reverbDecay);
     om.reverbWet.gain.value = fx.reverbMix;
-    om.crusher._bits = fx.crushBits;
-    om.crusher._reduction = fx.crushRate;
+    om.setCrush(fx.crushBits, fx.crushRate);
     om.bitDry.gain.value = 1 - fx.crushMix;
     om.bitWet.gain.value = fx.crushMix;
     om.comp.threshold.value = fx.compThresh;
@@ -1713,6 +1836,8 @@ select{cursor:pointer;}
       const audible = soloTrack != null ? i === soloTrack : (!t.mute && (!anySolo || t.solo));
       bus.gain.gain.value = audible ? t.vol : 0;
       if (bus.panner) bus.panner.pan.value = t.pan;
+      if (bus.sendA) bus.sendA.gain.value = audible ? (t.sendA || 0) : 0;
+      if (bus.sendB) bus.sendB.gain.value = audible ? (t.sendB || 0) : 0;
       return bus;
     });
 
@@ -1908,7 +2033,7 @@ select{cursor:pointer;}
     return {
       id: uid('trk'), name: `Track ${i + 1}`,
       color: TRACK_COLORS[i % TRACK_COLORS.length],
-      vol: 0.85, pan: 0, mute: false, solo: false, clips: [],
+      vol: 0.85, pan: 0, sendA: 0, sendB: 0, mute: false, solo: false, clips: [],
     };
   }
 
@@ -1993,7 +2118,7 @@ select{cursor:pointer;}
 
   /* -------------------------------------------------------------- history */
   const History = {
-    undoStack: [], redoStack: [], limit: 80,
+    undoStack: [], redoStack: [], labels: [], limit: 80,
     snapshot() {
       return JSON.stringify({
         bpm: Project.bpm, snap: Project.snap,
@@ -2001,11 +2126,33 @@ select{cursor:pointer;}
         name: Project.name, tracks: Project.tracks,
       });
     },
-    push() {
+    push(label) {
       this.undoStack.push(this.snapshot());
-      if (this.undoStack.length > this.limit) this.undoStack.shift();
+      this.labels.push(label || 'Edit');
+      if (this.undoStack.length > this.limit) { this.undoStack.shift(); this.labels.shift(); }
       this.redoStack.length = 0;
       bus.emit('history', { canUndo: this.canUndo(), canRedo: false });
+    },
+
+    /* Human-readable list, newest first, for the history panel. */
+    list() {
+      return this.undoStack.map((_, i) => ({
+        index: i,
+        label: this.labels[i] || 'Edit',
+        stepsBack: this.undoStack.length - i,
+      })).reverse();
+    },
+
+    /* Rewind to the state *before* entry i (and drop everything after it). */
+    jumpTo(i) {
+      if (i < 0 || i >= this.undoStack.length) return false;
+      this.redoStack.push(this.snapshot());
+      this.apply(this.undoStack[i]);
+      this.undoStack.length = i;
+      this.labels.length = i;
+      bus.emit('history', { canUndo: this.canUndo(), canRedo: true });
+      bus.emit('project:replaced');
+      return true;
     },
     apply(json) {
       const s = JSON.parse(json);
@@ -2018,6 +2165,7 @@ select{cursor:pointer;}
       if (!this.undoStack.length) return false;
       this.redoStack.push(this.snapshot());
       this.apply(this.undoStack.pop());
+      this.labels.pop();
       bus.emit('history', { canUndo: this.canUndo(), canRedo: true });
       bus.emit('project:replaced');
       return true;
@@ -2032,10 +2180,11 @@ select{cursor:pointer;}
     },
     /* commit a snapshot captured BEFORE an interaction started (lazy push:
        a drag that never moved should not pollute the history). */
-    commit(json) {
+    commit(json, label) {
       if (!json) return;
       this.undoStack.push(json);
-      if (this.undoStack.length > this.limit) this.undoStack.shift();
+      this.labels.push(label || 'Edit');
+      if (this.undoStack.length > this.limit) { this.undoStack.shift(); this.labels.shift(); }
       this.redoStack.length = 0;
       bus.emit('history', { canUndo: true, canRedo: false });
     },
@@ -2271,7 +2420,8 @@ select{cursor:pointer;}
       loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
       swing: Project.swing,
       tracks: Project.tracks.map((t) => ({
-        name: t.name, color: t.color, vol: t.vol, pan: t.pan, mute: t.mute, solo: t.solo,
+        name: t.name, color: t.color, vol: t.vol, pan: t.pan,
+        sendA: t.sendA || 0, sendB: t.sendB || 0, mute: t.mute, solo: t.solo,
         clips: t.clips.map((c) => ({
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
           startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
@@ -2296,6 +2446,7 @@ select{cursor:pointer;}
       track.color = t.color || track.color;
       track.vol = t.vol == null ? 0.85 : t.vol;
       track.pan = t.pan || 0;
+      track.sendA = t.sendA || 0; track.sendB = t.sendB || 0;
       track.mute = !!t.mute; track.solo = !!t.solo;
       track.clips = (t.clips || []).map((c) => {
         const s = Library.byName(c.sampleName);
@@ -3256,7 +3407,7 @@ select{cursor:pointer;}
           if (Math.abs(p.x - self.drag.startX) > 3 && !self.drag.moved.v) {
             self.drag.moved.v = true;
             clearTimeout(self.longPressTimer);
-            if (self._pendingSnap) { NB.History.commit(self._pendingSnap); self._pendingSnap = null; }
+            if (self._pendingSnap) { NB.History.commit(self._pendingSnap, self.drag.type === 'trim' ? 'Trim clip' : 'Move clip'); self._pendingSnap = null; }
           }
           if (!self.drag.moved.v) return;
 
@@ -3433,6 +3584,40 @@ select{cursor:pointer;}
       NB.bus.emit('mode', m);
     },
 
+    /* ---- clipboard ---------------------------------------------------- */
+    copySelected() {
+      const f = this.selectedClipId ? NB.project.findClip(this.selectedClipId) : null;
+      if (!f) { toast('Select a clip first', 'warn'); return false; }
+      this.clipboard = JSON.parse(JSON.stringify(f.clip));
+      toast('Copied', '', 1000);
+      return true;
+    },
+
+    cutSelected() {
+      if (!this.copySelected()) return false;
+      this.deleteSelected();
+      return true;
+    },
+
+    paste() {
+      if (!this.clipboard) { toast('Clipboard is empty', 'warn'); return false; }
+      const P = this.P;
+      const track = this.tracks.find((t) => t.id === this.selectedTrackId) || this.tracks[0];
+      NB.History.push('Paste clip');
+      const clip = JSON.parse(JSON.stringify(this.clipboard));
+      clip.id = uid('clp');
+      clip.trackId = track.id;
+      const six = Math.round(NB.Transport.currentSix() / P.snap) * P.snap;
+      clip.startSix = Math.max(0, six);
+      track.clips.push(clip);
+      this.selectedClipId = clip.id;
+      this.selectedTrackId = track.id;
+      NB.bus.emit('clips:changed');
+      NB.Persistence.saveSoon();
+      haptic(6);
+      return true;
+    },
+
     select(clipId) {
       this.selectedClipId = clipId;
       const f = clipId ? NB.project.findClip(clipId) : null;
@@ -3449,7 +3634,7 @@ select{cursor:pointer;}
       const six = Math.round(NB.Transport.currentSix());
       const start = clip.startSix, end = start + (clip.trimEndSix - clip.trimStartSix);
       if (six <= start + 0 || six >= end) { toast('Playhead is not over the clip', 'warn'); return; }
-      NB.History.push();
+      NB.History.push('Split clip');
       const cut = six - start;
       const second = JSON.parse(JSON.stringify(clip));
       second.id = uid('clp');
@@ -3465,7 +3650,7 @@ select{cursor:pointer;}
 
     deleteSelected() {
       if (!this.selectedClipId) { toast('Nothing selected', 'warn'); return; }
-      NB.History.push();
+      NB.History.push('Delete clip');
       NB.project.removeClip(this.selectedClipId);
       this.selectedClipId = null;
       NB.bus.emit('clips:changed');
@@ -3479,7 +3664,7 @@ select{cursor:pointer;}
       if (!id) { toast('Nothing selected', 'warn'); return; }
       const f = NB.project.findClip(id);
       if (!f) return;
-      NB.History.push();
+      NB.History.push('Duplicate clip');
       const dup = JSON.parse(JSON.stringify(f.clip));
       dup.id = uid('clp');
       dup.startSix = f.clip.startSix + (f.clip.trimEndSix - f.clip.trimStartSix);
@@ -3494,7 +3679,7 @@ select{cursor:pointer;}
       if (!id) return;
       const f = NB.project.findClip(id);
       if (!f) return;
-      NB.History.push();
+      NB.History.push('Nudge clip');
       f.clip.startSix = Math.max(0, f.clip.startSix + sixDelta);
       NB.bus.emit('clips:changed');
       NB.Transport.refresh();
@@ -3506,7 +3691,7 @@ select{cursor:pointer;}
       if (!id) { toast('Nothing selected', 'warn'); return; }
       const f = NB.project.findClip(id);
       if (!f) return;
-      NB.History.push();
+      NB.History.push('Quantise');
       const s = this.P.snap;
       f.clip.startSix = Math.round(f.clip.startSix / s) * s;
       NB.bus.emit('clips:changed');
@@ -3745,6 +3930,8 @@ select{cursor:pointer;}
           <input class="mfader" type="range" min="0" max="1" step="0.01" value="${t.vol}" aria-label="${escapeHtml(t.name)} volume">
           <div class="mval">${Math.round(t.vol * 100)}%</div>
           <input class="mpan" type="range" min="-1" max="1" step="0.02" value="${t.pan}" aria-label="${escapeHtml(t.name)} pan">
+          <div class="msend" title="Delay send"><b>A</b><input class="msendA" type="range" min="0" max="1" step="0.01" value="${t.sendA || 0}" aria-label="Delay send"></div>
+          <div class="msend" title="Reverb send"><b>B</b><input class="msendB" type="range" min="0" max="1" step="0.01" value="${t.sendB || 0}" aria-label="Reverb send"></div>
           <div class="mbtns">
             <button class="tbtn m ${t.mute ? 'on' : ''}" data-act="mute">M</button>
             <button class="tbtn s ${t.solo ? 'on' : ''}" data-act="solo">S</button>
@@ -3770,6 +3957,14 @@ select{cursor:pointer;}
         if (e.target.classList.contains('mpan')) {
           t.pan = parseFloat(e.target.value);
           NB.Engine.setTrackPan(P.tracks.indexOf(t), t.pan);
+        }
+        if (e.target.classList.contains('msendA')) {
+          t.sendA = parseFloat(e.target.value);
+          NB.Engine.setTrackSends(P.tracks.indexOf(t), t.sendA, t.sendB || 0);
+        }
+        if (e.target.classList.contains('msendB')) {
+          t.sendB = parseFloat(e.target.value);
+          NB.Engine.setTrackSends(P.tracks.indexOf(t), t.sendA || 0, t.sendB);
         }
       };
       this.host.onchange = () => NB.Persistence.saveSoon();
@@ -3945,8 +4140,8 @@ select{cursor:pointer;}
         case 'reverbSize': m.convolver.buffer = NB.ImpulseResponse.generate(NB.Engine.ctx, val, this.values.reverbDecay); break;
         case 'reverbDecay': m.convolver.buffer = NB.ImpulseResponse.generate(NB.Engine.ctx, this.values.reverbSize, val); break;
         case 'reverbMix': ramp(m.reverbWet.gain, val); break;
-        case 'crushBits': m.crusher._bits = val; break;
-        case 'crushRate': m.crusher._reduction = val; break;
+        case 'crushBits': m.setCrush(val, this.values.crushRate); break;
+        case 'crushRate': m.setCrush(this.values.crushBits, val); break;
         case 'crushMix': ramp(m.bitWet.gain, val); ramp(m.bitDry.gain, 1 - val); break;
         case 'compThresh': ramp(m.comp.threshold, val); break;
         case 'compRatio': ramp(m.comp.ratio, val); break;
@@ -4469,6 +4664,7 @@ select{cursor:pointer;}
       $$('#drawerTabs button').forEach((b) => b.classList.toggle('on', b.dataset.drawer === name));
       const host = $('#drawerBody');
       if (name === 'mixer') { host.innerHTML = ''; NB.Mixer.mount(host); }
+      if (name === 'history') this.renderHistory(host);
       if (name === 'fx') { host.innerHTML = ''; NB.Fx.mount(host); }
       if (name === 'export') this.renderExport(host);
       if (name === 'help') this.renderHelp(host);
@@ -4512,6 +4708,40 @@ select{cursor:pointer;}
         await NB.Persistence.clear();
         location.reload();
       });
+    },
+
+    renderHistory(host) {
+      const list = NB.History.list();
+      if (!list.length) {
+        host.innerHTML = '<div class="pane"><h3>History</h3><p>Nothing yet — every edit lands here as a named step you can jump back to.</p></div>';
+        return;
+      }
+      host.innerHTML = `<div class="pane">
+        <h3>History</h3>
+        <p style="margin-bottom:10px">Newest first. Click a step to go back to the state before it.</p>
+        <div id="histList"></div>
+      </div>`;
+      const box = $('#histList', host);
+      list.forEach((h) => {
+        const row = el('button', { class: 'histRow' });
+        row.innerHTML = `<span class="histLabel">${h.label}</span>
+          <span class="histStep">${h.stepsBack} step${h.stepsBack === 1 ? '' : 's'} back</span>`;
+        row.addEventListener('click', () => {
+          NB.History.jumpTo(h.index);
+          this.openDrawer('history');
+          NB.Persistence.saveSoon();
+        });
+        box.appendChild(row);
+      });
+      const clear = el('button', { class: 'btn danger', text: 'Clear history', style: 'margin-top:12px' });
+      clear.addEventListener('click', () => {
+        NB.History.undoStack.length = 0;
+        NB.History.labels.length = 0;
+        NB.History.redoStack.length = 0;
+        NB.bus.emit('history', { canUndo: false, canRedo: false });
+        this.openDrawer('history');
+      });
+      box.appendChild(clear);
     },
 
     renderHelp(host) {
@@ -4769,7 +4999,7 @@ select{cursor:pointer;}
 
     /* ------------------------------------------------------------ projects */
     loadDemo() {
-      NB.History.push();
+      NB.History.push('Load demo');
       NB.project.buildDemo();
       NB.Engine.ensureTrackBuses(NB.Project.tracks.length);
       NB.Engine.applyMix(NB.Project.tracks);
@@ -4783,7 +5013,7 @@ select{cursor:pointer;}
 
     addTrack() {
       if (NB.Project.tracks.length >= 24) { toast('24 tracks is the practical limit', 'warn'); return; }
-      NB.History.push();
+      NB.History.push('Add track');
       const t = NB.project.addTrack();
       NB.Engine.ensureTrackBuses(NB.Project.tracks.length);
       NB.Engine.applyMix(NB.Project.tracks);
@@ -4796,7 +5026,7 @@ select{cursor:pointer;}
 
     removeTrack(id) {
       if (NB.Project.tracks.length <= 1) { toast('Keep at least one track', 'warn'); return; }
-      NB.History.push();
+      NB.History.push('Remove track');
       NB.project.removeTrack(id);
       NB.Engine.ensureTrackBuses(NB.Project.tracks.length);
       NB.Engine.applyMix(NB.Project.tracks);
@@ -4923,6 +5153,9 @@ select{cursor:pointer;}
         if (mod && e.code === 'KeyZ') { e.preventDefault(); e.shiftKey ? NB.History.redo() : NB.History.undo(); return; }
         if (mod && e.code === 'KeyY') { e.preventDefault(); NB.History.redo(); return; }
         if (mod && e.code === 'KeyD') { e.preventDefault(); NB.Timeline.duplicateSelected(); return; }
+        if (mod && e.code === 'KeyC') { e.preventDefault(); NB.Timeline.copySelected(); return; }
+        if (mod && e.code === 'KeyX') { e.preventDefault(); NB.Timeline.cutSelected(); return; }
+        if (mod && e.code === 'KeyV') { e.preventDefault(); NB.Timeline.paste(); return; }
         if (mod && e.code === 'KeyS') { e.preventDefault(); this.saveProjectFile(); return; }
         if (mod) return;
 
@@ -5030,7 +5263,7 @@ select{cursor:pointer;}
   ];
 
   const App = {
-    version: '1.3.0',
+    version: '1.4.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');
@@ -5045,6 +5278,7 @@ select{cursor:pointer;}
       set(4, 'starting audio engine…');
       NB.Engine = new NB.AudioEngine();
       const E = NB.Engine;
+      await E.init();                       // registers the AudioWorklet module
 
       mark('engine');
 

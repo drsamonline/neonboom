@@ -71,6 +71,7 @@
     const sr = engine.ctx.sampleRate;                 // must match live context
     const totalSec = Grid.sixToSec(endSix - startSix, bpm) + tailSeconds(fx, bpm);
     const oac = new OfflineAudioContext(2, Math.ceil(totalSec * sr), sr);
+    await NB.AudioWorklet.prepare(oac);      // same crusher, offline
 
     const om = engine._buildMasterChain(oac, oac.destination);
     om.eqLow.gain.value = fx.eqLow;
@@ -81,8 +82,7 @@
     om.delayWet.gain.value = fx.delayMix;
     om.convolver.buffer = NB.ImpulseResponse.generate(oac, fx.reverbSize, fx.reverbDecay);
     om.reverbWet.gain.value = fx.reverbMix;
-    om.crusher._bits = fx.crushBits;
-    om.crusher._reduction = fx.crushRate;
+    om.setCrush(fx.crushBits, fx.crushRate);
     om.bitDry.gain.value = 1 - fx.crushMix;
     om.bitWet.gain.value = fx.crushMix;
     om.comp.threshold.value = fx.compThresh;
@@ -95,6 +95,8 @@
       const audible = soloTrack != null ? i === soloTrack : (!t.mute && (!anySolo || t.solo));
       bus.gain.gain.value = audible ? t.vol : 0;
       if (bus.panner) bus.panner.pan.value = t.pan;
+      if (bus.sendA) bus.sendA.gain.value = audible ? (t.sendA || 0) : 0;
+      if (bus.sendB) bus.sendB.gain.value = audible ? (t.sendB || 0) : 0;
       return bus;
     });
 

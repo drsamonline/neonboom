@@ -40,7 +40,7 @@
   ];
 
   const App = {
-    version: '1.3.0',
+    version: '1.4.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');
@@ -55,6 +55,7 @@
       set(4, 'starting audio engine…');
       NB.Engine = new NB.AudioEngine();
       const E = NB.Engine;
+      await E.init();                       // registers the AudioWorklet module
 
       mark('engine');
 

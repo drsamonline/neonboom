@@ -227,6 +227,7 @@
       $$('#drawerTabs button').forEach((b) => b.classList.toggle('on', b.dataset.drawer === name));
       const host = $('#drawerBody');
       if (name === 'mixer') { host.innerHTML = ''; NB.Mixer.mount(host); }
+      if (name === 'history') this.renderHistory(host);
       if (name === 'fx') { host.innerHTML = ''; NB.Fx.mount(host); }
       if (name === 'export') this.renderExport(host);
       if (name === 'help') this.renderHelp(host);
@@ -270,6 +271,40 @@
         await NB.Persistence.clear();
         location.reload();
       });
+    },
+
+    renderHistory(host) {
+      const list = NB.History.list();
+      if (!list.length) {
+        host.innerHTML = '<div class="pane"><h3>History</h3><p>Nothing yet — every edit lands here as a named step you can jump back to.</p></div>';
+        return;
+      }
+      host.innerHTML = `<div class="pane">
+        <h3>History</h3>
+        <p style="margin-bottom:10px">Newest first. Click a step to go back to the state before it.</p>
+        <div id="histList"></div>
+      </div>`;
+      const box = $('#histList', host);
+      list.forEach((h) => {
+        const row = el('button', { class: 'histRow' });
+        row.innerHTML = `<span class="histLabel">${h.label}</span>
+          <span class="histStep">${h.stepsBack} step${h.stepsBack === 1 ? '' : 's'} back</span>`;
+        row.addEventListener('click', () => {
+          NB.History.jumpTo(h.index);
+          this.openDrawer('history');
+          NB.Persistence.saveSoon();
+        });
+        box.appendChild(row);
+      });
+      const clear = el('button', { class: 'btn danger', text: 'Clear history', style: 'margin-top:12px' });
+      clear.addEventListener('click', () => {
+        NB.History.undoStack.length = 0;
+        NB.History.labels.length = 0;
+        NB.History.redoStack.length = 0;
+        NB.bus.emit('history', { canUndo: false, canRedo: false });
+        this.openDrawer('history');
+      });
+      box.appendChild(clear);
     },
 
     renderHelp(host) {
@@ -527,7 +562,7 @@
 
     /* ------------------------------------------------------------ projects */
     loadDemo() {
-      NB.History.push();
+      NB.History.push('Load demo');
       NB.project.buildDemo();
       NB.Engine.ensureTrackBuses(NB.Project.tracks.length);
       NB.Engine.applyMix(NB.Project.tracks);
@@ -541,7 +576,7 @@
 
     addTrack() {
       if (NB.Project.tracks.length >= 24) { toast('24 tracks is the practical limit', 'warn'); return; }
-      NB.History.push();
+      NB.History.push('Add track');
       const t = NB.project.addTrack();
       NB.Engine.ensureTrackBuses(NB.Project.tracks.length);
       NB.Engine.applyMix(NB.Project.tracks);
@@ -554,7 +589,7 @@
 
     removeTrack(id) {
       if (NB.Project.tracks.length <= 1) { toast('Keep at least one track', 'warn'); return; }
-      NB.History.push();
+      NB.History.push('Remove track');
       NB.project.removeTrack(id);
       NB.Engine.ensureTrackBuses(NB.Project.tracks.length);
       NB.Engine.applyMix(NB.Project.tracks);
@@ -681,6 +716,9 @@
         if (mod && e.code === 'KeyZ') { e.preventDefault(); e.shiftKey ? NB.History.redo() : NB.History.undo(); return; }
         if (mod && e.code === 'KeyY') { e.preventDefault(); NB.History.redo(); return; }
         if (mod && e.code === 'KeyD') { e.preventDefault(); NB.Timeline.duplicateSelected(); return; }
+        if (mod && e.code === 'KeyC') { e.preventDefault(); NB.Timeline.copySelected(); return; }
+        if (mod && e.code === 'KeyX') { e.preventDefault(); NB.Timeline.cutSelected(); return; }
+        if (mod && e.code === 'KeyV') { e.preventDefault(); NB.Timeline.paste(); return; }
         if (mod && e.code === 'KeyS') { e.preventDefault(); this.saveProjectFile(); return; }
         if (mod) return;
 

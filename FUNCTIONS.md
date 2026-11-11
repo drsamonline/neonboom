@@ -30,9 +30,11 @@ Legend: ✅ implemented and tested · 🔎 implemented, verified manually · ⚠
 |---|---|---|
 | `AudioEngine` | Owns the `AudioContext` and the master chain | ✅ |
 | `_buildMasterChain(ctx, dest)` | EQ → dry/delay/reverb sends → bitcrusher → limiter → master gain → destination. Reused offline for export | ✅ |
-| `buildTrackBus(ctx, master)` | Per-track gain → panner → master input, with a meter tap | ✅ |
+| `buildTrackBus(ctx, master)` | Per-track gain → panner → master input, plus delay/reverb sends and a meter tap | ✅ |
 | `ensureTrackBuses(n)` | Grows or shrinks the bus array when tracks are added/removed | ✅ |
 | `setTrackVolume(i,v)` / `setTrackPan(i,p)` | Ramped parameter writes | ✅ |
+| `setTrackSends(i,a,b)` | Post-fader delay / reverb send amounts | ✅ |
+| `AudioWorklet.prepare(ctx)` | Registers the crusher module (data: URL) per context | ✅ |
 | `applyMix(tracks)` | Resolves mute/solo into real gains so it silences audio that is already playing | ✅ |
 | `readMasterVU(bands)` / `readTrackLevel(i)` | Analyser reads with reusable buffers (no per-frame allocation) | ✅ |
 | `preview(buffer, rate)` / `stopPreview()` | Audition a sample through the master chain | ✅ |
@@ -80,6 +82,7 @@ Voices: `kickHit`, `snareHit`, `clapHit`, `hatHit`, `crashHit`, `bass808`, `stab
 | `newTrack/initTracks/addTrack/removeTrack` | Track lifecycle (1–24 tracks) | ✅ |
 | `newClip/clipEnd/findClip/removeClip` | Clip helpers | ✅ |
 | `History.push/commit/undo/redo` | 80-step snapshot undo/redo with lazy commit so a drag that never moved does not pollute history | ✅ |
+| `History.list/jumpTo` | Named steps for the history panel, and rewinding to one | ✅ |
 | `Persistence.open/save/saveSoon/load/clear` | IndexedDB autosave of project + imported sample bytes, with id remapping on restore | ✅ |
 | `projectFile()` / `loadProjectFile()` | Portable `.neonboom.json` save/open (pitch, reverse, fades and swing included) | 🔎 |
 | `LoopCache.many/all/put/hydrate` | 16-bit PCM loop cache in IndexedDB, mono when channels match | ✅ |
@@ -105,6 +108,7 @@ Voices: `kickHit`, `snareHit`, `clapHit`, `hatHit`, `crashHit`, `bass808`, `stab
 | `setZoom/zoomIn/zoomOut/zoomFit` | 18 %–500 % zoom | ✅ |
 | `setMode('scroll'\|'edit')` | On touch: native panning vs. clip dragging | ✅ |
 | `splitAtPlayhead/deleteSelected/duplicateSelected/nudge/quantize` | Clip operations | ✅ |
+| `copySelected/cutSelected/paste` | Clipboard, paste at the snapped playhead | ✅ |
 | `scrollToPlayhead()` | Follows the playhead while rolling | 🔎 |
 
 ## 6. Pads — `src/ui/pads.js`
@@ -160,7 +164,7 @@ on first run → reveal. ✅
 
 | # | Limitation | Why it exists | Fix |
 |---|---|---|---|
-| 1 | Bitcrusher uses `ScriptProcessorNode` | Needs no per-context worklet registration, which matters because export creates a fresh `OfflineAudioContext` each render | Move to `AudioWorkletNode` with a cached module (roadmap) |
+| 1 | Bitcrusher falls back to `ScriptProcessorNode` where AudioWorklet is unavailable | Some locked-down browsers and old Safari | Nothing to do; the warning is gone in every modern browser |
 | 2 | No per-clip pitch or reverse | Would need a second playback path and a peak re-render | Roadmap |
 | 3 | Clip gain is applied at schedule time, not as a live node | Keeps the graph small | Add a per-clip gain node if automation lands |
 | 4 | Tempo changes restart playback | Simple, glitch-free rescheduling | Look-ahead scheduler (roadmap) |

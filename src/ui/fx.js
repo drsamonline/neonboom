@@ -132,8 +132,8 @@
         case 'reverbSize': m.convolver.buffer = NB.ImpulseResponse.generate(NB.Engine.ctx, val, this.values.reverbDecay); break;
         case 'reverbDecay': m.convolver.buffer = NB.ImpulseResponse.generate(NB.Engine.ctx, this.values.reverbSize, val); break;
         case 'reverbMix': ramp(m.reverbWet.gain, val); break;
-        case 'crushBits': m.crusher._bits = val; break;
-        case 'crushRate': m.crusher._reduction = val; break;
+        case 'crushBits': m.setCrush(val, this.values.crushRate); break;
+        case 'crushRate': m.setCrush(this.values.crushBits, val); break;
         case 'crushMix': ramp(m.bitWet.gain, val); ramp(m.bitDry.gain, 1 - val); break;
         case 'compThresh': ramp(m.comp.threshold, val); break;
         case 'compRatio': ramp(m.comp.ratio, val); break;

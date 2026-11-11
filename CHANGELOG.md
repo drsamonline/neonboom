@@ -5,6 +5,33 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.4.0] — 2026-11-11
+
+Mixer sends, a real history panel, clipboard, and the bitcrusher finally moves off the
+deprecated `ScriptProcessorNode`.
+
+### Added
+- **Per-track delay and reverb sends** (A/B on every mixer strip). Post-fader, so they follow
+  the volume, and honoured by the offline export — the sends are wired to the master's existing
+  delay and convolver instead of duplicating them.
+- **History panel** (drawer → *History*): every edit is a named step — *Split clip*, *Nudge clip*,
+  *Paste clip*, *Add track* — newest first, one click to jump back to the state before it.
+- **Clipboard**: copy / cut / paste clips (`Ctrl+C`, `Ctrl+X`, `Ctrl+V`). Paste lands on the
+  selected track at the playhead, snapped.
+
+### Changed
+- The bitcrusher is an **AudioWorkletNode** when the browser allows it, with the
+  `ScriptProcessorNode` kept as a fallback. The module is loaded from a `data:` URL, not a
+  `blob:` one: a page opened from `file://` has an opaque origin, and the worklet loader
+  refuses blob URLs there — which is exactly how the standalone file is opened.
+- Mixer strips are slightly shorter so faders, pan and both sends fit inside the drawer.
+
+### Fixed
+- Export now prepares the worklet inside its `OfflineAudioContext`, so the crusher sounds the
+  same offline as live.
+
+---
+
 ## [1.3.0] — 2026-11-11
 
 The optional pack. The core file is unchanged in spirit — still one self-contained

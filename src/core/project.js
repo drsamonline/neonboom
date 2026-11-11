@@ -62,7 +62,7 @@
     return {
       id: uid('trk'), name: `Track ${i + 1}`,
       color: TRACK_COLORS[i % TRACK_COLORS.length],
-      vol: 0.85, pan: 0, mute: false, solo: false, clips: [],
+      vol: 0.85, pan: 0, sendA: 0, sendB: 0, mute: false, solo: false, clips: [],
     };
   }
 
@@ -147,7 +147,7 @@
 
   /* -------------------------------------------------------------- history */
   const History = {
-    undoStack: [], redoStack: [], limit: 80,
+    undoStack: [], redoStack: [], labels: [], limit: 80,
     snapshot() {
       return JSON.stringify({
         bpm: Project.bpm, snap: Project.snap,
@@ -155,11 +155,33 @@
         name: Project.name, tracks: Project.tracks,
       });
     },
-    push() {
+    push(label) {
       this.undoStack.push(this.snapshot());
-      if (this.undoStack.length > this.limit) this.undoStack.shift();
+      this.labels.push(label || 'Edit');
+      if (this.undoStack.length > this.limit) { this.undoStack.shift(); this.labels.shift(); }
       this.redoStack.length = 0;
       bus.emit('history', { canUndo: this.canUndo(), canRedo: false });
+    },
+
+    /* Human-readable list, newest first, for the history panel. */
+    list() {
+      return this.undoStack.map((_, i) => ({
+        index: i,
+        label: this.labels[i] || 'Edit',
+        stepsBack: this.undoStack.length - i,
+      })).reverse();
+    },
+
+    /* Rewind to the state *before* entry i (and drop everything after it). */
+    jumpTo(i) {
+      if (i < 0 || i >= this.undoStack.length) return false;
+      this.redoStack.push(this.snapshot());
+      this.apply(this.undoStack[i]);
+      this.undoStack.length = i;
+      this.labels.length = i;
+      bus.emit('history', { canUndo: this.canUndo(), canRedo: true });
+      bus.emit('project:replaced');
+      return true;
     },
     apply(json) {
       const s = JSON.parse(json);
@@ -172,6 +194,7 @@
       if (!this.undoStack.length) return false;
       this.redoStack.push(this.snapshot());
       this.apply(this.undoStack.pop());
+      this.labels.pop();
       bus.emit('history', { canUndo: this.canUndo(), canRedo: true });
       bus.emit('project:replaced');
       return true;
@@ -186,10 +209,11 @@
     },
     /* commit a snapshot captured BEFORE an interaction started (lazy push:
        a drag that never moved should not pollute the history). */
-    commit(json) {
+    commit(json, label) {
       if (!json) return;
       this.undoStack.push(json);
-      if (this.undoStack.length > this.limit) this.undoStack.shift();
+      this.labels.push(label || 'Edit');
+      if (this.undoStack.length > this.limit) { this.undoStack.shift(); this.labels.shift(); }
       this.redoStack.length = 0;
       bus.emit('history', { canUndo: true, canRedo: false });
     },
@@ -425,7 +449,8 @@
       loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
       swing: Project.swing,
       tracks: Project.tracks.map((t) => ({
-        name: t.name, color: t.color, vol: t.vol, pan: t.pan, mute: t.mute, solo: t.solo,
+        name: t.name, color: t.color, vol: t.vol, pan: t.pan,
+        sendA: t.sendA || 0, sendB: t.sendB || 0, mute: t.mute, solo: t.solo,
         clips: t.clips.map((c) => ({
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
           startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
@@ -450,6 +475,7 @@
       track.color = t.color || track.color;
       track.vol = t.vol == null ? 0.85 : t.vol;
       track.pan = t.pan || 0;
+      track.sendA = t.sendA || 0; track.sendB = t.sendB || 0;
       track.mute = !!t.mute; track.solo = !!t.solo;
       track.clips = (t.clips || []).map((c) => {
         const s = Library.byName(c.sampleName);

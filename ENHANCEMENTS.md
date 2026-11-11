@@ -49,7 +49,7 @@ entirely after the first visit.
 |---|---|---|---|---|
 | 6 | **Look-ahead scheduler** (25 ms timer, 120 ms horizon) instead of "schedule everything at play". Enables tempo changes without a restart and gapless loop points. | M | med | removes the audible gap at loop boundaries |
 | 7 | **Reuse `AudioBufferSourceNode` gain nodes** per track instead of one gain per clip. | S | low | fewer nodes on dense arrangements |
-| 8 | Move the bitcrusher to **AudioWorklet** with a cached module URL. | S | low | removes the deprecation warning, less main-thread work |
+| 8 | ~~Move the bitcrusher to AudioWorklet~~ — **shipped in 1.4.0** (data: URL module, ScriptProcessor fallback) | — | — | — |
 | 9 | **Off-main-thread peaks**: compute peaks in a Web Worker when a sample is imported. | S | low | import of a 5-minute file no longer janks |
 | 10 | Draw waveforms from a **pre-baked path per sample** (`Path2D` scaled per clip) instead of per-pixel rects. | S | low | ~2× faster clip drawing at high zoom |
 | 11 | **Virtualise track rows** vertically as well as horizontally (already horizontal). | S | low | stays smooth past ~30 tracks |
@@ -92,14 +92,14 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 27 | **Tap tempo + tempo automation-free half/double** | S | low | the most-requested small thing |
 | 28 | **Scene / pattern launcher** (Ableton-style clip rows) | L | med | a different workflow; keep it optional behind a tab |
 | 29 | **Sample editor** (trim, normalise, fade, crop to selection) | M | med | imported loops are otherwise un-editable |
-| 30 | **Per-track FX send amounts** (delay/reverb) | S | low | the sends already exist in the graph — just expose them |
-| 31 | **Undo history panel** with named steps | S | low | 80 snapshots already exist, they are just invisible |
+| 30 | ~~Per-track FX send amounts~~ — **shipped in 1.4.0** (A/B on every strip, post-fader, exported) | — | — | — |
+| 31 | ~~Undo history panel with named steps~~ — **shipped in 1.4.0** (drawer → History, click to jump) | — | — | — |
 | 32 | **Project templates** (boom-bap, trap, house) built from the same demo generator | S | low | faster start than an empty grid |
 | 33 | ~~Swing~~ — **shipped in 1.2.0** (0–60 %, playback + export) | — | — | — |
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
-22, 24, 25 and 33 are done. The next cheapest wins from this table are **30** (per-track send
-amounts — the sends already exist), **31** (undo history panel) and **32** (templates).
+22, 24, 25, 30, 31, 33 and 45 are done. The next cheapest wins are **32** (templates), **44**
+(multi-select) and **29** (sample editor).
 
 ---
 
@@ -117,7 +117,7 @@ amounts — the sends already exist), **31** (undo history panel) and **32** (te
 | 42 | **Larger-text mode** (a 14 px root size) | S | low |
 | 43 | **Reduced-motion** already respected; extend to the playhead follow | S | low |
 | 44 | **Multi-select clips** (shift-click, marquee) | M | med |
-| 45 | **Copy/paste clips** across tracks and positions | S | low |
+| 45 | ~~Copy/paste clips~~ — **shipped in 1.4.0** (Ctrl+C/X/V, paste at playhead) | — | — |
 
 ---
 

@@ -31,6 +31,8 @@
           <input class="mfader" type="range" min="0" max="1" step="0.01" value="${t.vol}" aria-label="${escapeHtml(t.name)} volume">
           <div class="mval">${Math.round(t.vol * 100)}%</div>
           <input class="mpan" type="range" min="-1" max="1" step="0.02" value="${t.pan}" aria-label="${escapeHtml(t.name)} pan">
+          <div class="msend" title="Delay send"><b>A</b><input class="msendA" type="range" min="0" max="1" step="0.01" value="${t.sendA || 0}" aria-label="Delay send"></div>
+          <div class="msend" title="Reverb send"><b>B</b><input class="msendB" type="range" min="0" max="1" step="0.01" value="${t.sendB || 0}" aria-label="Reverb send"></div>
           <div class="mbtns">
             <button class="tbtn m ${t.mute ? 'on' : ''}" data-act="mute">M</button>
             <button class="tbtn s ${t.solo ? 'on' : ''}" data-act="solo">S</button>
@@ -56,6 +58,14 @@
         if (e.target.classList.contains('mpan')) {
           t.pan = parseFloat(e.target.value);
           NB.Engine.setTrackPan(P.tracks.indexOf(t), t.pan);
+        }
+        if (e.target.classList.contains('msendA')) {
+          t.sendA = parseFloat(e.target.value);
+          NB.Engine.setTrackSends(P.tracks.indexOf(t), t.sendA, t.sendB || 0);
+        }
+        if (e.target.classList.contains('msendB')) {
+          t.sendB = parseFloat(e.target.value);
+          NB.Engine.setTrackSends(P.tracks.indexOf(t), t.sendA || 0, t.sendB);
         }
       };
       this.host.onchange = () => NB.Persistence.saveSoon();

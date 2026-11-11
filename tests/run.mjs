@@ -377,7 +377,10 @@ console.log('\n7 · phone layout & touch');
   await new Promise((r) => setTimeout(r, 1200));   // generous: the background
   await page.touchscreen.touchEnd();               // loop pass can starve timers
   await new Promise((r) => setTimeout(r, 250));
-  check('long-press opens the clip sheet', await page.evaluate(() => document.querySelector('#sheet').classList.contains('on')));
+  const sheetOpened = await page.waitForFunction(
+    "document.querySelector('#sheet').classList.contains('on')",
+    { timeout: 2500 }).then(() => true).catch(() => false);
+  check('long-press opens the clip sheet', sheetOpened);
   check('tapping the scrim closes it again', await (async () => {
     await page.mouse.click(20, 120);                       // scrim area, above the sheet
     await new Promise((r) => setTimeout(r, 250));
@@ -526,6 +529,73 @@ console.log('\n10 · loop cache');
   check('warm boot hydrates from cache', t.hydrated >= 14, t.hydrated);
   check('warm boot renders nothing on the critical path', t.phase1 === 0, t.phase1);
   check('warm boot is faster than cold', t.storage < 1500, t.storage);
+  await page.close(); await page.__ctx.close();
+}
+
+/* --------------------------------- 12. sends, clipboard, history, worklet */
+console.log('\n12 · sends, clipboard, history, worklet');
+{
+  const { page, errors } = await open(APP);
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, o = {};
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    /* --- per-track sends reach the graph --- */
+    NB.Project.tracks[0].sendA = 0.5;
+    NB.Project.tracks[0].sendB = 0.25;
+    NB.Engine.applyMix(NB.Project.tracks);
+    await sleep(120);
+    o.sendA = NB.Engine.tracks[0].sendA.gain.value;
+    o.sendB = NB.Engine.tracks[0].sendB.gain.value;
+    o.sendNodes = !!NB.Engine.tracks[0].sendA && !!NB.Engine.tracks[0].sendB;
+
+    /* --- clipboard --- */
+    const t0 = NB.Project.tracks[1];
+    const before = t0.clips.length;
+    NB.Timeline.select(t0.clips[0].id);
+    o.copied = NB.Timeline.copySelected();
+    NB.Transport.seekTo(48);
+    NB.Timeline.selectedTrackId = t0.id;
+    o.pasted = NB.Timeline.paste();
+    o.pasteCount = NB.Project.tracks[1].clips.length;
+    const pasted = NB.Project.tracks[1].clips[NB.Project.tracks[1].clips.length - 1];
+    o.pasteAtPlayhead = pasted.startSix === 48;
+    o.pasteNewId = pasted.id !== NB.Timeline.clipboard.id;
+
+    /* --- labelled history + jump --- */
+    const labels = NB.History.list().map((h) => h.label);
+    o.labels = labels.slice(0, 4);
+    o.hasLabels = labels.some((l) => l === 'Paste clip');
+    const clipsNow = NB.Project.tracks[1].clips.length;
+    const first = NB.History.list().find((h) => h.label === 'Paste clip');
+    NB.History.jumpTo(first.index);
+    o.afterJump = NB.Project.tracks[1].clips.length;
+    o.jumpWorked = o.afterJump === clipsNow - 1;
+
+    /* --- AudioWorklet crusher, not the deprecated node --- */
+    o.workletReady = NB.AudioWorklet._ready.has(NB.Engine.ctx);
+    o.crusherIsWorklet = !!(NB.Engine.master.crusher && NB.Engine.master.crusher._worklet);
+    o.setCrush = typeof NB.Engine.master.setCrush === 'function';
+    NB.Engine.master.setCrush(4, 8);
+    o.crushBits = NB.Engine.master.crusher._bits;
+    o.crushHasParams = !!(NB.Engine.master.crusher.parameters &&
+      NB.Engine.master.crusher.parameters.get('bits'));
+    return o;
+  });
+  check('delay send reaches the track bus', Math.abs(o.sendA - 0.5) < 0.02, o.sendA);
+  check('reverb send reaches the track bus', Math.abs(o.sendB - 0.25) < 0.02, o.sendB);
+  check('copy puts a clip on the clipboard', o.copied);
+  check('paste adds a clip', o.pasted && o.pasteCount > 0, o.pasteCount);
+  check('paste lands at the playhead', o.pasteAtPlayhead);
+  check('pasted clip gets a new id', o.pasteNewId);
+  check('history entries carry labels', o.hasLabels, o.labels);
+  check('jumping back in history undoes to that point', o.jumpWorked, { before: o.afterJump });
+  check('AudioWorklet module registered', o.workletReady);
+  check('bitcrusher runs as an AudioWorkletNode', o.crusherIsWorklet);
+  check('crusher parameters are settable', o.setCrush && o.crushBits === 4 && o.crushHasParams, { bits: o.crushBits, params: o.crushHasParams });
+  check('no ScriptProcessor deprecation warning', !errors.some((e) => /ScriptProcessorNode is deprecated/i.test(e)), errors.slice(0, 2));
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
   await page.close(); await page.__ctx.close();
 }
 

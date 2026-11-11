@@ -7,6 +7,68 @@
   'use strict';
   const { clamp } = NB.util;
 
+  /* ---------------------------------------------------------- bitcrusher
+     AudioWorklet where available (off the main thread, no deprecation
+     warning), ScriptProcessorNode as the fallback for locked-down browsers.
+     The module is a Blob URL so it works from file:// and inside any
+     OfflineAudioContext without shipping a second file. */
+  const CRUSHER_SRC = `
+class NB_Bitcrusher extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [
+      { name: 'bits', defaultValue: 8, minValue: 1, maxValue: 16, automationRate: 'k-rate' },
+      { name: 'reduction', defaultValue: 4, minValue: 1, maxValue: 64, automationRate: 'k-rate' },
+    ];
+  }
+  constructor() { super(); this.phase = 0; this.held = []; }
+  process(inputs, outputs, params) {
+    const input = inputs[0], output = outputs[0];
+    if (!input || input.length === 0) return true;
+    const step = Math.pow(0.5, params.bits[0]);
+    const red = Math.max(1, Math.round(params.reduction[0]));
+    for (let ch = 0; ch < output.length; ch++) {
+      const inp = input[ch] || input[0];
+      const out = output[ch];
+      let held = this.held[ch] || 0;
+      for (let i = 0; i < out.length; i++) {
+        if (this.phase % red === 0) held = step * Math.round(inp[i] / step);
+        out[i] = held;
+        this.phase++;
+      }
+      this.held[ch] = held;
+    }
+    return true;
+  }
+}
+registerProcessor('nb-bitcrusher', NB_Bitcrusher);
+`;
+
+  const Worklet = {
+    _url: null,
+    _ready: new WeakSet(),
+    url() {
+      /* data:, not blob: — a blob URL inherits the page origin, and a page
+         opened from file:// has an opaque origin, which the worklet loader
+         refuses. The data URL works from file://, http(s) and Electron alike. */
+      if (!this._url) {
+        this._url = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(CRUSHER_SRC);
+      }
+      return this._url;
+    },
+    supported(ctx) { return !!(ctx.audioWorklet && ctx.audioWorklet.addModule && typeof AudioWorkletNode !== 'undefined'); },
+    async prepare(ctx) {
+      if (!this.supported(ctx) || this._ready.has(ctx)) return this._ready.has(ctx);
+      try {
+        await ctx.audioWorklet.addModule(this.url());
+        this._ready.add(ctx);
+        return true;
+      } catch (err) {
+        console.warn('AudioWorklet unavailable — falling back to ScriptProcessor', err);
+        return false;
+      }
+    },
+  };
+
   /* Synthetic reverb impulse: exponentially decaying stereo noise. */
   const ImpulseResponse = {
     generate(ctx, seconds, decay) {
@@ -32,7 +94,15 @@
       this._previewSrc = null;
       this._vuBuf = null;
       this._meterBuf = null;
+    }
+
+    /* Async because the AudioWorklet module has to be registered before the
+       master chain can use it. Callers that cannot await (tests) still work:
+       buildMasterChain() falls back to ScriptProcessorNode. */
+    async init() {
+      await Worklet.prepare(this.ctx);
       this._buildMasterChain(this.ctx);
+      return this;
     }
 
     /* master chain:
@@ -73,8 +143,19 @@
          every render. Guarded: fall back to a passthrough gain. */
       const bitDry = ctx.createGain(); bitDry.gain.value = 1;
       const bitWet = ctx.createGain(); bitWet.gain.value = 0;
-      let crusher;
-      try {
+      let crusher = null;
+
+      if (Worklet._ready.has(ctx)) {
+        try {
+          crusher = new AudioWorkletNode(ctx, 'nb-bitcrusher', {
+            numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+          });
+          crusher._bits = 8; crusher._reduction = 4;
+          crusher._worklet = true;
+        } catch (err) { crusher = null; }
+      }
+
+      if (!crusher) try {
         crusher = ctx.createScriptProcessor(1024, 2, 2);
         crusher._bits = 8; crusher._reduction = 4;
         crusher.onaudioprocess = (e) => {
@@ -113,22 +194,41 @@
 
       const chain = { input, eqLow, eqMid, eqHigh, delay, feedback, delayWet,
         convolver, reverbWet, crusher, bitDry, bitWet, comp, masterGain, analyser };
+      chain.setCrush = (bits, reduction) => {
+        crusher._bits = bits; crusher._reduction = reduction;
+        if (crusher._worklet && crusher.parameters) {
+          const t = ctx.currentTime;
+          crusher.parameters.get('bits').setValueAtTime(bits, t);
+          crusher.parameters.get('reduction').setValueAtTime(reduction, t);
+        }
+      };
       if (ctx === this.ctx) this.master = chain;
       return chain;
     }
 
-    /* per-track bus: gain → panner → master.input, plus a meter tap */
+    /* per-track bus:
+         gain → panner ─┬→ master.input        (dry)
+                        ├→ sendA → master.delay     (post-fader delay send)
+                        └→ sendB → master.convolver (post-fader reverb send)
+       plus a meter tap on the fader. */
     buildTrackBus(ctx, masterChain) {
       const gain = ctx.createGain(); gain.gain.value = 0.85;
       const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-      gain.connect(panner || masterChain.input);
-      if (panner) panner.connect(masterChain.input);
+      const post = panner || gain;
+      gain.connect(post);
+      post.connect(masterChain.input);
+
+      const sendA = ctx.createGain(); sendA.gain.value = 0;
+      const sendB = ctx.createGain(); sendB.gain.value = 0;
+      post.connect(sendA); sendA.connect(masterChain.delay);
+      post.connect(sendB); sendB.connect(masterChain.convolver);
+
       let analyser = null;
       if (ctx.createAnalyser) {
         analyser = ctx.createAnalyser(); analyser.fftSize = 128;
         gain.connect(analyser);
       }
-      return { gain, panner, analyser };
+      return { gain, panner, sendA, sendB, analyser };
     }
 
     ensureTrackBuses(count) {
@@ -137,7 +237,10 @@
       }
       while (this.tracks.length > count) {
         const b = this.tracks.pop();
-        try { b.gain.disconnect(); b.panner && b.panner.disconnect(); } catch (e) {}
+        try {
+          b.gain.disconnect(); b.panner && b.panner.disconnect();
+          b.sendA && b.sendA.disconnect(); b.sendB && b.sendB.disconnect();
+        } catch (e) {}
       }
     }
 
@@ -149,6 +252,11 @@
       const b = this.tracks[i]; if (!b) return;
       if (b.panner) b.panner.pan.setTargetAtTime(clamp(p, -1, 1), this.ctx.currentTime, 0.01);
     }
+    setTrackSends(i, a, b2) {
+      const b = this.tracks[i]; if (!b) return;
+      if (b.sendA) b.sendA.gain.setTargetAtTime(clamp(a || 0, 0, 1), this.ctx.currentTime, 0.01);
+      if (b.sendB) b.sendB.gain.setTargetAtTime(clamp(b2 || 0, 0, 1), this.ctx.currentTime, 0.01);
+    }
     /* Mute/solo is applied as a real gain change, so it is audible instantly
        on already-playing sources — not just the next scheduling pass. */
     applyMix(tracks) {
@@ -157,6 +265,7 @@
         const audible = !t.mute && (!anySolo || t.solo);
         this.setTrackVolume(i, audible ? t.vol : 0);
         this.setTrackPan(i, t.pan);
+        this.setTrackSends(i, audible ? (t.sendA || 0) : 0, audible ? (t.sendB || 0) : 0);
       });
     }
 
@@ -222,4 +331,5 @@
 
   NB.AudioEngine = AudioEngine;
   NB.ImpulseResponse = ImpulseResponse;
+  NB.AudioWorklet = Worklet;
 })(window.NB = window.NB || {});

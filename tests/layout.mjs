@@ -17,7 +17,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = 'file://' + path.join(ROOT, 'index.html');
 const BASELINE = path.join(ROOT, 'tests', 'layout-baseline.json');
 const UPDATE = process.argv.includes('--update');
-const TOLERANCE = 4;          // px, absorbs font/AA differences between machines
+/* Absolute pixels are not portable: the CI runner has different system fonts
+   and media features, which moves heights by ~10 %. So the gate is relative —
+   loose enough to survive a different machine, tight enough to catch a panel
+   disappearing (exact `hidden` match), a wrapped toolbar or a collapsed lane. */
+const ABS_TOLERANCE = 6;      // px
+const REL_TOLERANCE = 0.15;   // 15 %
 
 const VIEWPORTS = [
   { name: 'desktop', w: 1440, h: 900, mobile: false },
@@ -99,10 +104,11 @@ for (const vp of VIEWPORTS) {
       if (a !== b) { failures++; report.push(`${vp.name} ${key}: ${JSON.stringify(b)} → ${JSON.stringify(a)}`); }
       continue;
     }
-    const dw = Math.abs(a[0] - b[0]), dh = Math.abs(a[1] - b[1]);
-    if (dw > TOLERANCE || dh > TOLERANCE) {
+    const off = (now_, was_) => Math.abs(now_ - was_) > Math.max(ABS_TOLERANCE, was_ * REL_TOLERANCE);
+    if (off(a[0], b[0]) || off(a[1], b[1])) {
       failures++;
-      report.push(`${vp.name} ${key}: ${b[0]}×${b[1]} → ${a[0]}×${a[1]}`);
+      const pct = Math.round((Math.abs(a[0] * a[1] - b[0] * b[1]) / Math.max(1, b[0] * b[1])) * 100);
+      report.push(`${vp.name} ${key}: ${b[0]}×${b[1]} → ${a[0]}×${a[1]} (${pct}% area)`);
     }
   }
   if (now.overflowX && !was.overflowX) { failures++; report.push(`${vp.name}: horizontal overflow appeared`); }

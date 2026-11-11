@@ -828,6 +828,66 @@ console.log('\n15 · automation lanes');
   await page.close(); await page.__ctx.close();
 }
 
+/* ---------------------------------------------------------------- 16. MIDI */
+console.log('\n16 · MIDI input');
+{
+  const context = await browser.createBrowserContext();
+  const page = await context.newPage();
+  await page.setViewport({ width: 1280, height: 800 });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.evaluateOnNewDocument(() => {
+    try { localStorage.setItem('nb-onboarded', '1'); } catch (e) {}
+    const mk = (name) => ({ id: name, name, onmidimessage: null });
+    window.__fakeMidi = {
+      inputs: new Map([['a', mk('Fake Keys')], ['b', mk('Fake Pads')]]),
+      onstatechange: null,
+    };
+    navigator.requestMIDIAccess = () => Promise.resolve(window.__fakeMidi);
+  });
+  await page.goto(APP, { waitUntil: 'load' });
+  await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 40000 }).catch(() => {});
+
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), o = {};
+    o.supported = NB.Midi.supported;
+    o.statusBefore = NB.Midi.status();
+    o.enabled = await NB.Midi.enable();
+    o.statusAfter = NB.Midi.status();
+    o.inputs = NB.Midi.inputs.length;
+
+    const levels = [];
+    const orig = NB.Engine.preview.bind(NB.Engine);
+    NB.Engine.preview = (buf, rate, level) => { levels.push(level); return orig(buf, rate, level); };
+    const input = [...window.__fakeMidi.inputs.values()][0];
+    input.onmidimessage({ data: new Uint8Array([0x90, 36, 100]) });   // pad 0, velocity 100
+    await sleep(60);
+    input.onmidimessage({ data: new Uint8Array([0x90, 37, 40]) });    // pad 1, velocity 40
+    await sleep(60);
+    o.levels = levels.map((v) => +v.toFixed(2));
+    o.previewed = levels.length;
+
+    input.onmidimessage({ data: new Uint8Array([0x90, 52, 100]) });   // base+16 → play
+    await sleep(220);
+    o.playing = NB.Transport.playing;
+    NB.Transport.pause();
+    input.onmidimessage({ data: new Uint8Array([0x80, 36, 0]) });     // note off
+    o.survivedNoteOff = true;
+    return o;
+  });
+
+  check('Web MIDI is detected', o.supported);
+  check('MIDI starts off until asked', o.statusBefore === 'off', o.statusBefore);
+  check('enabling reports the inputs', o.enabled && o.statusAfter === '2 inputs', o.statusAfter);
+  check('a note triggers a pad', o.previewed === 2, o.previewed);
+  check('velocity scales the level', Math.abs(o.levels[0] - 0.79) < 0.02 && Math.abs(o.levels[1] - 0.31) < 0.02, o.levels);
+  check('a mapped note drives the transport', o.playing);
+  check('note-off does not throw', o.survivedNoteOff);
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await context.close();
+}
+
 /* ---------------------------------------------------------- 11. standalone */
 console.log('\n11 · standalone builds (readable + minified)');
 {

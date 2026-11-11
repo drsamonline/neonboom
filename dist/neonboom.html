@@ -1691,13 +1691,15 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     }
 
     /* ---------- preview & click ---------- */
-    preview(buffer, rate = 1) {
+    preview(buffer, rate = 1, level = 1) {
       this.resume();
       if (this._previewSrc) { try { this._previewSrc.stop(); } catch (e) {} }
       const src = this.ctx.createBufferSource();
       src.buffer = buffer;
       src.playbackRate.value = rate;
-      src.connect(this.master.input);
+      const g = this.ctx.createGain();
+      g.gain.value = Math.max(0, Math.min(1, level));
+      src.connect(g); g.connect(this.master.input);
       src.start();
       this._previewSrc = src;
       return src;
@@ -2952,6 +2954,97 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   };
 
   NB.Templates = Templates;
+})(window.NB = window.NB || {});
+
+</script>
+<script>
+/* =========================================================================
+   NEONBOOM · core/midi.js
+   Web MIDI input. Opt-in: the permission prompt only appears when you ask for
+   it, and the app is fully playable with a mouse or a finger without it.
+
+   Default mapping (MPC-style, C1 upward):
+     notes base+0 … base+15   → the first 16 visible pads, velocity scales level
+     note  base+16            → play / pause
+     note  base+17            → rewind
+   ========================================================================= */
+(function (NB) {
+  'use strict';
+
+  const Midi = {
+    ready: false,
+    error: null,
+    access: null,
+    base: 36,                 // C1
+    inputs: [],
+    lastNote: 0,
+
+    get supported() { return typeof navigator !== 'undefined' && !!navigator.requestMIDIAccess; },
+
+    status() {
+      if (!this.supported) return 'unsupported';
+      if (this.error) return this.error;
+      if (!this.ready) return 'off';
+      return this.inputs.length ? `${this.inputs.length} input${this.inputs.length > 1 ? 's' : ''}` : 'no devices';
+    },
+
+    /* Call from a user gesture — that is when the browser will show the prompt. */
+    async enable() {
+      if (!this.supported) { this.error = 'unsupported'; return false; }
+      try {
+        this.access = await navigator.requestMIDIAccess({ sysex: false });
+        this.ready = true;
+        this.error = null;
+        this.access.onstatechange = () => this.bind();
+        this.bind();
+        NB.bus.emit('midi', this.status());
+        return true;
+      } catch (err) {
+        this.error = err && err.name ? err.name.toLowerCase() : 'blocked';
+        NB.bus.emit('midi', this.status());
+        return false;
+      }
+    },
+
+    bind() {
+      if (!this.access) return;
+      this.inputs = [];
+      this.access.inputs.forEach((input) => {
+        this.inputs.push(input.name || 'input');
+        input.onmidimessage = (msg) => this.onMessage(msg);
+      });
+      NB.bus.emit('midi', this.status());
+    },
+
+    onMessage(msg) {
+      const d = msg && msg.data;
+      if (!d || d.length < 2) return;
+      const cmd = d[0] & 0xf0;
+      const note = d[1];
+      const vel = d.length > 2 ? d[2] : 0;
+      if (cmd === 0x90 && vel > 0) this.noteOn(note, vel);
+      else if (cmd === 0x80 || (cmd === 0x90 && vel === 0)) this.noteOff(note);
+    },
+
+    noteOn(note, velocity) {
+      const idx = note - this.base;
+      this.lastNote = note;
+      NB.bus.emit('midi:note', { note, velocity });
+
+      if (idx === 16) { NB.Transport.toggle(); return; }
+      if (idx === 17) { NB.Transport.rewind(); return; }
+      if (idx < 0 || idx > 15) return;
+
+      const samples = NB.Pads.visibleSamples();
+      const sample = samples[idx];
+      if (!sample) return;
+      NB.Pads.trigger(sample.id, velocity / 127);
+    },
+
+    noteOff() { /* one-shots: nothing to release */ },
+  };
+
+  NB.Midi = Midi;
 })(window.NB = window.NB || {});
 
 </script>
@@ -4481,11 +4574,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       });
     },
 
-    /* audition + optional placement */
-    trigger(sampleId) {
+    /* audition + optional placement. `velocity` (0..1) comes from MIDI. */
+    trigger(sampleId, velocity) {
       const s = NB.Library.get(sampleId);
       if (!s) return;
-      NB.Engine.preview(s.buffer, NB.Project.bpm / s.refBpm);
+      const level = velocity == null ? 1 : Math.max(0.05, Math.min(1, velocity));
+      NB.Engine.preview(s.buffer, NB.Project.bpm / s.refBpm, level);
       if (this.armed) {
         const trackId = NB.Timeline.selectedTrackId || NB.Project.tracks[0].id;
         const clip = NB.Transport.recordPad(sampleId, trackId);
@@ -5453,7 +5547,11 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
             <div><span>Fit project</span><span class="kbd">F</span></div>
             <div><span>Mute track</span><span class="kbd">M</span></div>
             <div><span>Audition pads</span><span class="kbd">1-0 Q W</span></div>
+            <div><span>MIDI pads</span><span class="kbd">notes 36-51</span></div>
+            <div><span>MIDI transport</span><span class="kbd">notes 52 / 53</span></div>
           </div>
+          <h3 style="font-size:12px;margin-top:16px">MIDI</h3>
+          <p style="font-size:11.5px">Plug in a controller, then <b>More → Appearance → Enable</b> under MIDI in. Notes 36–51 fire the first 16 pads with velocity; note 52 starts and stops; 53 rewinds. Nothing is sent anywhere — the browser talks to the device directly.</p>
           <h3 style="font-size:12px;margin-top:16px">Credits &amp; licence</h3>
           <p style="font-size:11.5px">Built by <b>Dr Sohil Momin</b> · <a href="https://github.com/drsamonline/neonboom" target="_blank" rel="noopener">github.com/drsamonline/neonboom</a>.
           Licensed under the <b>PolyForm Noncommercial License 1.0.0</b> — free for personal, study, teaching, research and non-profit use; commercial use needs a separate licence.</p>
@@ -5760,6 +5858,9 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
             <button data-size="normal" class="${root.dataset.textsize !== 'large' ? 'on' : ''}">Normal</button>
             <button data-size="large" class="${root.dataset.textsize === 'large' ? 'on' : ''}">Larger</button>
           </div></div>
+        <div class="sheetRow"><label>MIDI in</label>
+          <span style="font-size:11.5px;color:var(--ink-2);flex:1" id="setMidiStatus">${escapeHtml(NB.Midi.status())}</span>
+          <button class="btn" id="setMidi">${NB.Midi.ready ? 'Rescan' : 'Enable'}</button></div>
         <div class="sheetRow"><label>Motion</label>
           <span style="font-size:11px;color:var(--ink-2)">Follows your system reduced-motion setting.</span></div>
         <div class="sheetBtns">
@@ -5781,6 +5882,14 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         localStorage.setItem('nb-textsize', b.dataset.size);
         requestAnimationFrame(() => NB.Timeline.resize());
       }));
+      $('#setMidi', s).addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        const ok = await NB.Midi.enable();
+        $('#setMidiStatus', s).textContent = NB.Midi.status();
+        e.currentTarget.disabled = false;
+        e.currentTarget.textContent = 'Rescan';
+        toast(ok ? `MIDI ready — ${NB.Midi.status()}` : `MIDI ${NB.Midi.status()}`, ok ? 'ok' : 'warn', 2600);
+      });
       $('#setTpl', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
       $('#setPack', s).addEventListener('click', () => { this.closeSheet(); this.loadPackFile(); });
     },
@@ -6182,7 +6291,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '1.9.0',
+    version: '2.0.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

@@ -318,13 +318,15 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     }
 
     /* ---------- preview & click ---------- */
-    preview(buffer, rate = 1) {
+    preview(buffer, rate = 1, level = 1) {
       this.resume();
       if (this._previewSrc) { try { this._previewSrc.stop(); } catch (e) {} }
       const src = this.ctx.createBufferSource();
       src.buffer = buffer;
       src.playbackRate.value = rate;
-      src.connect(this.master.input);
+      const g = this.ctx.createGain();
+      g.gain.value = Math.max(0, Math.min(1, level));
+      src.connect(g); g.connect(this.master.input);
       src.start();
       this._previewSrc = src;
       return src;

@@ -91,11 +91,12 @@
       });
     },
 
-    /* audition + optional placement */
-    trigger(sampleId) {
+    /* audition + optional placement. `velocity` (0..1) comes from MIDI. */
+    trigger(sampleId, velocity) {
       const s = NB.Library.get(sampleId);
       if (!s) return;
-      NB.Engine.preview(s.buffer, NB.Project.bpm / s.refBpm);
+      const level = velocity == null ? 1 : Math.max(0.05, Math.min(1, velocity));
+      NB.Engine.preview(s.buffer, NB.Project.bpm / s.refBpm, level);
       if (this.armed) {
         const trackId = NB.Timeline.selectedTrackId || NB.Project.tracks[0].id;
         const clip = NB.Transport.recordPad(sampleId, trackId);

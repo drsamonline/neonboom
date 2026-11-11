@@ -5,6 +5,29 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.0.0] — 2026-11-11
+
+MIDI input, and a version number that reflects a finished feature set rather than a new API.
+
+### Added
+- **Web MIDI input** (`src/core/midi.js`), opt-in from *More → Appearance → MIDI in*:
+  - notes **36–51** fire the first 16 visible pads, **velocity scales the level**;
+  - note **52** starts/stops, **53** rewinds;
+  - device hot-plug is picked up through `onstatechange`, and the sheet reports how many inputs
+    are connected.
+- Velocity flows through `Engine.preview(buffer, rate, level)` and `Pads.trigger(id, velocity)`.
+
+### Changed
+- The permission prompt only appears when you press **Enable** — the app never asks for MIDI on
+  load, and stays fully playable with mouse or touch without it.
+
+### Notes on 2.0
+The feature set is what I set out to build: pads, arrangement, mixer with sends, master FX,
+automation, templates, clip editor, stems, offline PWA, desktop and Android builds, and now
+hardware input. Anything after this is additive.
+
+---
+
 ## [1.9.0] — 2026-11-11
 
 Two builds, one source. The size trend gets a real answer instead of another raised limit.

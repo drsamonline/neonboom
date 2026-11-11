@@ -71,6 +71,7 @@ let out = html
   .replace(/<!--css:(\d+)-->/g, (_, i) => `<style>\n${cssChunks[i]}\n</style>`)
   .replace(/<!--js:(\d+)-->/g, (_, i) => `<script>\n${jsChunks[i].code}\n</script>`);
 
+const kb = (f) => (fs.statSync(f).size / 1024).toFixed(0);
 const outDir = path.join(root, 'dist');
 fs.mkdirSync(outDir, { recursive: true });
 const readable = path.join(outDir, 'neonboom.html');
@@ -102,6 +103,5 @@ let outMin = html
 const minified = path.join(outDir, 'neonboom.min.html');
 fs.writeFileSync(minified, outMin);
 
-const kb = (f) => (fs.statSync(f).size / 1024).toFixed(0);
 console.log(`built dist/neonboom.html      ${kb(readable)} KB  (readable)`);
 console.log(`built dist/neonboom.min.html  ${kb(minified)} KB  (minified, ${Math.round((1 - fs.statSync(minified).size / fs.statSync(readable).size) * 100)}% smaller)`);

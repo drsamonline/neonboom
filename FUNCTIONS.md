@@ -75,6 +75,15 @@ live loop library, with levels, sends, swing and loop length preset. ✅
 `Frame.add(fn)` — one throttled `requestAnimationFrame` (~30 fps) shared by the master VU, the
 track meters and the mixer meters. Replaced three `setInterval` timers. ✅
 
+## 2f. MIDI — `src/core/midi.js`
+
+| Function | What it does | Status |
+|---|---|---|
+| `Midi.enable()` | Requests MIDI access from a user gesture, binds every input | ✅ |
+| `Midi.status()` | `unsupported` / `off` / `N inputs` / `no devices` / error name | ✅ |
+| `Midi.onMessage(msg)` | Routes note-on / note-off | ✅ |
+| `Midi.noteOn(note, velocity)` | Pads 36–51 (velocity), transport on 52/53 | ✅ |
+
 ## 3. Synthesis — `src/audio/synth.js`
 
 27 generators, each rendering an `AudioBuffer` offline at 90 BPM and declaring its musical

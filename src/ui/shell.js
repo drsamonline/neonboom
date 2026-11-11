@@ -341,7 +341,11 @@
             <div><span>Fit project</span><span class="kbd">F</span></div>
             <div><span>Mute track</span><span class="kbd">M</span></div>
             <div><span>Audition pads</span><span class="kbd">1-0 Q W</span></div>
+            <div><span>MIDI pads</span><span class="kbd">notes 36-51</span></div>
+            <div><span>MIDI transport</span><span class="kbd">notes 52 / 53</span></div>
           </div>
+          <h3 style="font-size:12px;margin-top:16px">MIDI</h3>
+          <p style="font-size:11.5px">Plug in a controller, then <b>More → Appearance → Enable</b> under MIDI in. Notes 36–51 fire the first 16 pads with velocity; note 52 starts and stops; 53 rewinds. Nothing is sent anywhere — the browser talks to the device directly.</p>
           <h3 style="font-size:12px;margin-top:16px">Credits &amp; licence</h3>
           <p style="font-size:11.5px">Built by <b>Dr Sohil Momin</b> · <a href="https://github.com/drsamonline/neonboom" target="_blank" rel="noopener">github.com/drsamonline/neonboom</a>.
           Licensed under the <b>PolyForm Noncommercial License 1.0.0</b> — free for personal, study, teaching, research and non-profit use; commercial use needs a separate licence.</p>
@@ -648,6 +652,9 @@
             <button data-size="normal" class="${root.dataset.textsize !== 'large' ? 'on' : ''}">Normal</button>
             <button data-size="large" class="${root.dataset.textsize === 'large' ? 'on' : ''}">Larger</button>
           </div></div>
+        <div class="sheetRow"><label>MIDI in</label>
+          <span style="font-size:11.5px;color:var(--ink-2);flex:1" id="setMidiStatus">${escapeHtml(NB.Midi.status())}</span>
+          <button class="btn" id="setMidi">${NB.Midi.ready ? 'Rescan' : 'Enable'}</button></div>
         <div class="sheetRow"><label>Motion</label>
           <span style="font-size:11px;color:var(--ink-2)">Follows your system reduced-motion setting.</span></div>
         <div class="sheetBtns">
@@ -669,6 +676,14 @@
         localStorage.setItem('nb-textsize', b.dataset.size);
         requestAnimationFrame(() => NB.Timeline.resize());
       }));
+      $('#setMidi', s).addEventListener('click', async (e) => {
+        e.currentTarget.disabled = true;
+        const ok = await NB.Midi.enable();
+        $('#setMidiStatus', s).textContent = NB.Midi.status();
+        e.currentTarget.disabled = false;
+        e.currentTarget.textContent = 'Rescan';
+        toast(ok ? `MIDI ready — ${NB.Midi.status()}` : `MIDI ${NB.Midi.status()}`, ok ? 'ok' : 'warn', 2600);
+      });
       $('#setTpl', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
       $('#setPack', s).addEventListener('click', () => { this.closeSheet(); this.loadPackFile(); });
     },

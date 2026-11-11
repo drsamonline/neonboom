@@ -28,11 +28,11 @@
           <div class="mtrk">${String(i + 1).padStart(2, '0')}</div>
           <div class="mname" style="color:${t.color}" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</div>
           <div class="mstripMeter"><i></i></div>
-          <input class="mfader" type="range" min="0" max="1" step="0.01" value="${t.vol}" aria-label="${escapeHtml(t.name)} volume">
+          <input class="mfader" type="range" min="0" max="1" step="0.01" value="${t.vol}" data-midi="track:${i}:vol" aria-label="${escapeHtml(t.name)} volume">
           <div class="mval">${Math.round(t.vol * 100)}%</div>
-          <input class="mpan" type="range" min="-1" max="1" step="0.02" value="${t.pan}" aria-label="${escapeHtml(t.name)} pan">
-          <div class="msend" title="Delay send"><b>A</b><input class="msendA" type="range" min="0" max="1" step="0.01" value="${t.sendA || 0}" aria-label="Delay send"></div>
-          <div class="msend" title="Reverb send"><b>B</b><input class="msendB" type="range" min="0" max="1" step="0.01" value="${t.sendB || 0}" aria-label="Reverb send"></div>
+          <input class="mpan" type="range" min="-1" max="1" step="0.02" value="${t.pan}" data-midi="track:${i}:pan" aria-label="${escapeHtml(t.name)} pan">
+          <div class="msend" title="Delay send"><b>A</b><input class="msendA" type="range" min="0" max="1" step="0.01" value="${t.sendA || 0}" data-midi="track:${i}:sendA" aria-label="Delay send"></div>
+          <div class="msend" title="Reverb send"><b>B</b><input class="msendB" type="range" min="0" max="1" step="0.01" value="${t.sendB || 0}" data-midi="track:${i}:sendB" aria-label="Reverb send"></div>
           <div class="mbtns">
             <button class="tbtn m ${t.mute ? 'on' : ''}" data-act="mute">M</button>
             <button class="tbtn s ${t.solo ? 'on' : ''}" data-act="solo">S</button>

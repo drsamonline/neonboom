@@ -11,11 +11,11 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.0.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.1.0-ffb020)](CHANGELOG.md)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
-[![Tests](https://img.shields.io/badge/headless_tests-171_assertions_passing-41d18a)](#testing)
+[![Tests](https://img.shields.io/badge/headless_tests-180_assertions_passing-41d18a)](#testing)
 [![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
 [![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
@@ -38,7 +38,7 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 | ⚡ **Fast** | Loops are rendered once and cached in IndexedDB as 16-bit mono, so a warm start is a memory copy: **~4.7 s cold → ~1.6 s warm**, with the priority half ready before the veil lifts. |
 | 🎯 **Sample-accurate** | A look-ahead scheduler queues 180 ms of audio at a time, so loop points land on the clock instead of on a `setTimeout`, tempo changes apply while rolling, and a 64-bar project never builds hundreds of nodes up front. |
 | 📦 **Optional pack** | A separate 6.9 MB zip of the same 27 loops, rendered by the app itself. Bundled builds load it automatically; on the web it is a button. The core file never grows. |
-| 🎹 **MIDI in** | Plug in a controller: notes 36–51 fire the first 16 pads with velocity, 52 starts/stops, 53 rewinds. Opt-in from *More → Appearance*, nothing leaves the machine. |
+| 🎹 **MIDI in** | Plug in a controller: notes 36–51 fire the first 16 pads with velocity, 52 starts/stops, 53 rewinds. **CC learn** maps any knob to any rack or mixer control. Opt-in, nothing leaves the machine. |
 | 🧰 **Templates** | Boom Bap, Trap, House or an empty grid — built from the same loops, with mixer levels and sends already set. |
 | 📈 **Automation** | Per-track level and pan envelopes. Press **A** on a track, click to add points, drag to move, alt-click to remove. Played and exported |
 | ✂️ **Clip editor** | Drag the trim handles on the full waveform, normalise, fit to 1 or 2 bars, halve, reset. Non-destructive — undo covers all of it. |
@@ -188,7 +188,7 @@ npm run build:pack             # re-renders pack/neonboom-pack-v1.zip from the s
 npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **171 assertions across three harnesses (147 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
+Latest run: **180 assertions across three harnesses (156 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
 
 ---
 

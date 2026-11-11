@@ -888,6 +888,78 @@ console.log('\n16 · MIDI input');
   await page.close(); await context.close();
 }
 
+/* ------------------------------------------------------------ 17. MIDI CC */
+console.log('\n17 · MIDI CC learn');
+{
+  const context = await browser.createBrowserContext();
+  const page = await context.newPage();
+  await page.setViewport({ width: 1280, height: 800 });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.evaluateOnNewDocument(() => {
+    try { localStorage.setItem('nb-onboarded', '1'); } catch (e) {}
+    const mk = (n) => ({ id: n, name: n, onmidimessage: null });
+    window.__fakeMidi = { inputs: new Map([['a', mk('Keys')]]), onstatechange: null };
+    navigator.requestMIDIAccess = () => Promise.resolve(window.__fakeMidi);
+  });
+  await page.goto(APP, { waitUntil: 'load' });
+  await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 40000 }).catch(() => {});
+
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), o = {};
+    await NB.Midi.enable();
+    const input = [...window.__fakeMidi.inputs.values()][0];
+    NB.Shell.openDrawer('fx');
+    await sleep(120);
+
+    const slider = document.querySelector('[data-midi="fx:delayMix"]');
+    o.hasTarget = !!slider;
+
+    NB.Midi.beginLearn();
+    o.armed = NB.Midi.learning;
+    slider.value = 0.3;
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    o.named = NB.Midi.learning === 'cc' && NB.Midi.learnTarget === 'fx:delayMix';
+
+    input.onmidimessage({ data: new Uint8Array([0xb0, 74, 10]) });     // CC 74
+    o.bound = NB.Midi.ccMap['74'] === 'fx:delayMix';
+    o.disarmed = NB.Midi.learning === null;
+
+    input.onmidimessage({ data: new Uint8Array([0xb0, 74, 127]) });    // drive it
+    o.sliderValue = +document.querySelector('[data-midi="fx:delayMix"]').value;
+    o.fxValue = +NB.Fx.values.delayMix;
+    o.persisted = (localStorage.getItem('nb-ccmap') || '').includes('fx:delayMix');
+
+    /* a track fader is mappable too */
+    NB.Shell.openDrawer('mixer');
+    await sleep(120);
+    const fader = document.querySelector('[data-midi="track:0:vol"]');
+    o.hasFader = !!fader;
+    NB.Midi.beginLearn();
+    fader.dispatchEvent(new Event('input', { bubbles: true }));
+    input.onmidimessage({ data: new Uint8Array([0xb0, 7, 0]) });
+    o.faderBound = NB.Midi.ccMap['7'] === 'track:0:vol';
+    input.onmidimessage({ data: new Uint8Array([0xb0, 7, 64]) });
+    o.volAfter = +NB.Project.tracks[0].vol.toFixed(2);
+
+    NB.Midi.clearMap();
+    o.cleared = Object.keys(NB.Midi.ccMap).length;
+    return o;
+  });
+
+  check('learnable controls carry a target id', o.hasTarget && o.hasFader);
+  check('learn arms on the control step', o.armed === 'control');
+  check('moving a control names the target', o.named);
+  check('the next CC binds and disarms', o.bound && o.disarmed);
+  check('a bound CC drives the control', o.sliderValue === 1 && o.fxValue === 1, { s: o.sliderValue, f: o.fxValue });
+  check('mappings persist', o.persisted);
+  check('a track fader can be mapped', o.faderBound && o.volAfter > 0.4, o.volAfter);
+  check('clear removes every mapping', o.cleared === 0);
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await context.close();
+}
+
 /* ---------------------------------------------------------- 11. standalone */
 console.log('\n11 · standalone builds (readable + minified)');
 {

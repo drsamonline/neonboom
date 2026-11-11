@@ -5,6 +5,25 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.0] — 2026-11-11
+
+MIDI CC learn — the knobs on your controller can drive the app.
+
+### Added
+- **CC learn**, two steps: press *Learn* in *More → Appearance*, move a control in the app (that
+  names the target), then move a knob on the controller (that names the CC). The mapping is
+  stored in `localStorage` and survives a reload.
+- Every rack knob and every mixer fader, pan and send carries a stable `data-midi` id, so bindings
+  are one selector away.
+- A bound CC is applied by setting the control's value and dispatching `input`, which means every
+  existing handler runs — no second code path for "MIDI-driven" changes.
+
+### Changed
+- CC messages are now routed before note messages, and while learning the next CC is consumed by
+  the binding rather than by a mapping.
+
+---
+
 ## [2.0.0] — 2026-11-11
 
 MIDI input, and a version number that reflects a finished feature set rather than a new API.

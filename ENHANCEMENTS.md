@@ -88,7 +88,7 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 23 | ~~Automation lanes~~ — **shipped in 1.8.0** (level + pan envelopes, played and exported) | — | — | — |
 | 24 | ~~Stem export~~ — **shipped in 1.2.0** (`NB.Wav.renderStems` + `NB.Wav.zip`) | — | — | — |
 | 25 | ~~Clip fades~~ — **shipped in 1.2.0** (drawn wedges + gain envelope) | — | — | equal-power curves still to do |
-| 26 | ~~MIDI-in~~ — **shipped in 2.0.0** (pads + velocity + transport; CC learn still open) | — | — | — |
+| 26 | ~~MIDI-in~~ — **shipped in 2.0.0**, CC learn in **2.1.0** | — | — | — |
 | 27 | **Tap tempo + tempo automation-free half/double** | S | low | the most-requested small thing |
 | 28 | **Scene / pattern launcher** (Ableton-style clip rows) | L | med | a different workflow; keep it optional behind a tab |
 | 29 | ~~Clip editor~~ — **shipped in 1.7.0** (trim handles, normalise, fit-to-bar; non-destructive) | — | — |
@@ -99,8 +99,8 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
 Everything in the "cheap" column is now done except **#36** (roving-tabindex keyboard nav).
-What is left: **#34 WSOLA time-stretch**, **#28 scene launcher**, **#36** keyboard nav,
-MIDI **CC learn**, and the distribution items (#46–#52).
+What is left: **#34 WSOLA time-stretch**, **#28 scene launcher**, **#36** keyboard nav, and the
+distribution items (#46–#52).
 
 ---
 

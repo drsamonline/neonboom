@@ -28,6 +28,7 @@
       this.wireImport();
       this.wireKeyboard();
       this.wireSheet();
+      this.wireMidiLearn();
       this.wireInstall();
 
       this.buildVu();
@@ -343,9 +344,10 @@
             <div><span>Audition pads</span><span class="kbd">1-0 Q W</span></div>
             <div><span>MIDI pads</span><span class="kbd">notes 36-51</span></div>
             <div><span>MIDI transport</span><span class="kbd">notes 52 / 53</span></div>
+            <div><span>MIDI CC learn</span><span class="kbd">More → Appearance</span></div>
           </div>
           <h3 style="font-size:12px;margin-top:16px">MIDI</h3>
-          <p style="font-size:11.5px">Plug in a controller, then <b>More → Appearance → Enable</b> under MIDI in. Notes 36–51 fire the first 16 pads with velocity; note 52 starts and stops; 53 rewinds. Nothing is sent anywhere — the browser talks to the device directly.</p>
+          <p style="font-size:11.5px">Plug in a controller, then <b>More → Appearance → Enable</b> under MIDI in. Notes 36–51 fire the first 16 pads with velocity; note 52 starts and stops; 53 rewinds. For knobs: press <b>Learn</b>, move a control in the app, then move a knob on the controller. Nothing is sent anywhere — the browser talks to the device directly.</p>
           <h3 style="font-size:12px;margin-top:16px">Credits &amp; licence</h3>
           <p style="font-size:11.5px">Built by <b>Dr Sohil Momin</b> · <a href="https://github.com/drsamonline/neonboom" target="_blank" rel="noopener">github.com/drsamonline/neonboom</a>.
           Licensed under the <b>PolyForm Noncommercial License 1.0.0</b> — free for personal, study, teaching, research and non-profit use; commercial use needs a separate licence.</p>
@@ -637,6 +639,29 @@
       toast(NB.Project.name + ' — press space', 'ok', 2400);
     },
 
+    /* While MIDI learn is armed, the next control you touch names the target. */
+    wireMidiLearn() {
+      NB.Midi.loadMap();
+      document.addEventListener('input', (e) => {
+        if (NB.Midi.learning !== 'control') return;
+        const el = e.target;
+        if (!el || !el.dataset || !el.dataset.midi) return;
+        NB.Midi.offerControl(el);
+        this.announce('Control selected — now move a knob on your controller');
+        toast('Now move a knob on your controller', '', 2600);
+      }, true);
+
+      NB.bus.on('midi:learn', (s) => {
+        if (s.stage === 'control') toast('MIDI learn: move a control in the app', '', 2600);
+        if (s.stage === 'cc') toast(`Learn: ${s.target} — move a knob now`, '', 3200);
+      });
+      NB.bus.on('midi:bound', (b) => {
+        if (b.cleared) { toast('MIDI mappings cleared', '', 1600); return; }
+        toast(`CC ${b.cc} → ${b.target}`, 'ok', 2200);
+        this.announce(`Bound controller ${b.cc} to ${b.target}`);
+      });
+    },
+
     /* ---------- appearance ---------- */
     openSettings() {
       const root = document.documentElement;
@@ -655,6 +680,10 @@
         <div class="sheetRow"><label>MIDI in</label>
           <span style="font-size:11.5px;color:var(--ink-2);flex:1" id="setMidiStatus">${escapeHtml(NB.Midi.status())}</span>
           <button class="btn" id="setMidi">${NB.Midi.ready ? 'Rescan' : 'Enable'}</button></div>
+        <div class="sheetRow"><label>MIDI learn</label>
+          <span style="font-size:11.5px;color:var(--ink-2);flex:1" id="setCcCount">${Object.keys(NB.Midi.ccMap).length} mapped</span>
+          <button class="btn" id="setLearn">Learn</button>
+          <button class="btn" id="setClearCc">Clear</button></div>
         <div class="sheetRow"><label>Motion</label>
           <span style="font-size:11px;color:var(--ink-2)">Follows your system reduced-motion setting.</span></div>
         <div class="sheetBtns">
@@ -683,6 +712,14 @@
         e.currentTarget.disabled = false;
         e.currentTarget.textContent = 'Rescan';
         toast(ok ? `MIDI ready — ${NB.Midi.status()}` : `MIDI ${NB.Midi.status()}`, ok ? 'ok' : 'warn', 2600);
+      });
+      $('#setLearn', s).addEventListener('click', () => {
+        this.closeSheet();
+        NB.Midi.beginLearn();
+      });
+      $('#setClearCc', s).addEventListener('click', () => {
+        NB.Midi.clearMap();
+        $('#setCcCount', s).textContent = '0 mapped';
       });
       $('#setTpl', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
       $('#setPack', s).addEventListener('click', () => { this.closeSheet(); this.loadPackFile(); });

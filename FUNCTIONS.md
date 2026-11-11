@@ -83,6 +83,9 @@ track meters and the mixer meters. Replaced three `setInterval` timers. ✅
 | `Midi.status()` | `unsupported` / `off` / `N inputs` / `no devices` / error name | ✅ |
 | `Midi.onMessage(msg)` | Routes note-on / note-off | ✅ |
 | `Midi.noteOn(note, velocity)` | Pads 36–51 (velocity), transport on 52/53 | ✅ |
+| `Midi.beginLearn/offerControl/bindCC` | Two-step CC learn (control, then knob) | ✅ |
+| `Midi.applyCC(cc, value)` | Drives the mapped control through its own `input` handler | ✅ |
+| `Midi.loadMap/saveMap/clearMap` | Bindings in `localStorage` | ✅ |
 
 ## 3. Synthesis — `src/audio/synth.js`
 

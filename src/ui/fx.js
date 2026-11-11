@@ -164,7 +164,7 @@
 
   function row(label, key, min, max, step, value, fmt) {
     return `<div class="knobRow"><label>${label}</label>
-      <input type="range" data-fx="${key}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}">
+      <input type="range" data-fx="${key}" data-midi="fx:${key}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}">
       <span class="val">${fmt(value)}</span></div>`;
   }
 

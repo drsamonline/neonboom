@@ -2978,6 +2978,9 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     base: 36,                 // C1
     inputs: [],
     lastNote: 0,
+    ccMap: {},                // { "74": "fx:delayMix" }
+    learning: null,           // null | 'control' | 'cc'
+    learnTarget: null,
 
     get supported() { return typeof navigator !== 'undefined' && !!navigator.requestMIDIAccess; },
 
@@ -2986,6 +2989,78 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       if (this.error) return this.error;
       if (!this.ready) return 'off';
       return this.inputs.length ? `${this.inputs.length} input${this.inputs.length > 1 ? 's' : ''}` : 'no devices';
+    },
+
+    /* ---- CC mapping ---------------------------------------------------
+       Two-step learn: arm it, move a control in the app (that names the
+       target), then move a knob on the controller (that names the CC). The
+       binding is applied by setting the control's value and dispatching an
+       `input` event, so every existing handler runs unchanged. */
+    loadMap() {
+      try {
+        const raw = localStorage.getItem('nb-ccmap');
+        this.ccMap = raw ? JSON.parse(raw) : {};
+      } catch (e) { this.ccMap = {}; }
+      return this.ccMap;
+    },
+
+    saveMap() {
+      try { localStorage.setItem('nb-ccmap', JSON.stringify(this.ccMap)); } catch (e) {}
+    },
+
+    beginLearn() {
+      this.learning = 'control';
+      this.learnTarget = null;
+      NB.bus.emit('midi:learn', { stage: 'control' });
+      return 'control';
+    },
+
+    cancelLearn() {
+      this.learning = null;
+      this.learnTarget = null;
+      NB.bus.emit('midi:learn', { stage: null });
+    },
+
+    /* called from a capturing input listener while learning */
+    offerControl(el) {
+      if (this.learning !== 'control') return false;
+      const target = el && el.dataset ? el.dataset.midi : null;
+      if (!target) return false;
+      this.learnTarget = target;
+      this.learning = 'cc';
+      NB.bus.emit('midi:learn', { stage: 'cc', target });
+      return true;
+    },
+
+    bindCC(cc) {
+      if (!this.learnTarget) return false;
+      this.ccMap[String(cc)] = this.learnTarget;
+      this.saveMap();
+      const target = this.learnTarget;
+      this.cancelLearn();
+      NB.bus.emit('midi:bound', { cc, target });
+      return true;
+    },
+
+    clearMap() {
+      this.ccMap = {};
+      this.saveMap();
+      NB.bus.emit('midi:bound', { cleared: true });
+    },
+
+    applyCC(cc, value) {
+      const target = this.ccMap[String(cc)];
+      if (!target) return false;
+      const el = document.querySelector(`[data-midi="${target}"]`);
+      if (!el) return false;
+      const min = parseFloat(el.min || '0');
+      const max = parseFloat(el.max || '1');
+      const v = min + (value / 127) * (max - min);
+      const step = parseFloat(el.step || '0.01') || 0.01;
+      el.value = String(Math.round(v / step) * step);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
     },
 
     /* Call from a user gesture — that is when the browser will show the prompt. */
@@ -3022,6 +3097,11 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       const cmd = d[0] & 0xf0;
       const note = d[1];
       const vel = d.length > 2 ? d[2] : 0;
+      if (cmd === 0xb0) {                    // control change
+        if (this.learning === 'cc') { this.bindCC(note); return; }
+        this.applyCC(note, vel);
+        return;
+      }
       if (cmd === 0x90 && vel > 0) this.noteOn(note, vel);
       else if (cmd === 0x80 || (cmd === 0x90 && vel === 0)) this.noteOff(note);
     },
@@ -4670,11 +4750,11 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           <div class="mtrk">${String(i + 1).padStart(2, '0')}</div>
           <div class="mname" style="color:${t.color}" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</div>
           <div class="mstripMeter"><i></i></div>
-          <input class="mfader" type="range" min="0" max="1" step="0.01" value="${t.vol}" aria-label="${escapeHtml(t.name)} volume">
+          <input class="mfader" type="range" min="0" max="1" step="0.01" value="${t.vol}" data-midi="track:${i}:vol" aria-label="${escapeHtml(t.name)} volume">
           <div class="mval">${Math.round(t.vol * 100)}%</div>
-          <input class="mpan" type="range" min="-1" max="1" step="0.02" value="${t.pan}" aria-label="${escapeHtml(t.name)} pan">
-          <div class="msend" title="Delay send"><b>A</b><input class="msendA" type="range" min="0" max="1" step="0.01" value="${t.sendA || 0}" aria-label="Delay send"></div>
-          <div class="msend" title="Reverb send"><b>B</b><input class="msendB" type="range" min="0" max="1" step="0.01" value="${t.sendB || 0}" aria-label="Reverb send"></div>
+          <input class="mpan" type="range" min="-1" max="1" step="0.02" value="${t.pan}" data-midi="track:${i}:pan" aria-label="${escapeHtml(t.name)} pan">
+          <div class="msend" title="Delay send"><b>A</b><input class="msendA" type="range" min="0" max="1" step="0.01" value="${t.sendA || 0}" data-midi="track:${i}:sendA" aria-label="Delay send"></div>
+          <div class="msend" title="Reverb send"><b>B</b><input class="msendB" type="range" min="0" max="1" step="0.01" value="${t.sendB || 0}" data-midi="track:${i}:sendB" aria-label="Reverb send"></div>
           <div class="mbtns">
             <button class="tbtn m ${t.mute ? 'on' : ''}" data-act="mute">M</button>
             <button class="tbtn s ${t.solo ? 'on' : ''}" data-act="solo">S</button>
@@ -4915,7 +4995,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
   function row(label, key, min, max, step, value, fmt) {
     return `<div class="knobRow"><label>${label}</label>
-      <input type="range" data-fx="${key}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}">
+      <input type="range" data-fx="${key}" data-midi="fx:${key}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}">
       <span class="val">${fmt(value)}</span></div>`;
   }
 
@@ -5234,6 +5314,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.wireImport();
       this.wireKeyboard();
       this.wireSheet();
+      this.wireMidiLearn();
       this.wireInstall();
 
       this.buildVu();
@@ -5549,9 +5630,10 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
             <div><span>Audition pads</span><span class="kbd">1-0 Q W</span></div>
             <div><span>MIDI pads</span><span class="kbd">notes 36-51</span></div>
             <div><span>MIDI transport</span><span class="kbd">notes 52 / 53</span></div>
+            <div><span>MIDI CC learn</span><span class="kbd">More → Appearance</span></div>
           </div>
           <h3 style="font-size:12px;margin-top:16px">MIDI</h3>
-          <p style="font-size:11.5px">Plug in a controller, then <b>More → Appearance → Enable</b> under MIDI in. Notes 36–51 fire the first 16 pads with velocity; note 52 starts and stops; 53 rewinds. Nothing is sent anywhere — the browser talks to the device directly.</p>
+          <p style="font-size:11.5px">Plug in a controller, then <b>More → Appearance → Enable</b> under MIDI in. Notes 36–51 fire the first 16 pads with velocity; note 52 starts and stops; 53 rewinds. For knobs: press <b>Learn</b>, move a control in the app, then move a knob on the controller. Nothing is sent anywhere — the browser talks to the device directly.</p>
           <h3 style="font-size:12px;margin-top:16px">Credits &amp; licence</h3>
           <p style="font-size:11.5px">Built by <b>Dr Sohil Momin</b> · <a href="https://github.com/drsamonline/neonboom" target="_blank" rel="noopener">github.com/drsamonline/neonboom</a>.
           Licensed under the <b>PolyForm Noncommercial License 1.0.0</b> — free for personal, study, teaching, research and non-profit use; commercial use needs a separate licence.</p>
@@ -5843,6 +5925,29 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       toast(NB.Project.name + ' — press space', 'ok', 2400);
     },
 
+    /* While MIDI learn is armed, the next control you touch names the target. */
+    wireMidiLearn() {
+      NB.Midi.loadMap();
+      document.addEventListener('input', (e) => {
+        if (NB.Midi.learning !== 'control') return;
+        const el = e.target;
+        if (!el || !el.dataset || !el.dataset.midi) return;
+        NB.Midi.offerControl(el);
+        this.announce('Control selected — now move a knob on your controller');
+        toast('Now move a knob on your controller', '', 2600);
+      }, true);
+
+      NB.bus.on('midi:learn', (s) => {
+        if (s.stage === 'control') toast('MIDI learn: move a control in the app', '', 2600);
+        if (s.stage === 'cc') toast(`Learn: ${s.target} — move a knob now`, '', 3200);
+      });
+      NB.bus.on('midi:bound', (b) => {
+        if (b.cleared) { toast('MIDI mappings cleared', '', 1600); return; }
+        toast(`CC ${b.cc} → ${b.target}`, 'ok', 2200);
+        this.announce(`Bound controller ${b.cc} to ${b.target}`);
+      });
+    },
+
     /* ---------- appearance ---------- */
     openSettings() {
       const root = document.documentElement;
@@ -5861,6 +5966,10 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         <div class="sheetRow"><label>MIDI in</label>
           <span style="font-size:11.5px;color:var(--ink-2);flex:1" id="setMidiStatus">${escapeHtml(NB.Midi.status())}</span>
           <button class="btn" id="setMidi">${NB.Midi.ready ? 'Rescan' : 'Enable'}</button></div>
+        <div class="sheetRow"><label>MIDI learn</label>
+          <span style="font-size:11.5px;color:var(--ink-2);flex:1" id="setCcCount">${Object.keys(NB.Midi.ccMap).length} mapped</span>
+          <button class="btn" id="setLearn">Learn</button>
+          <button class="btn" id="setClearCc">Clear</button></div>
         <div class="sheetRow"><label>Motion</label>
           <span style="font-size:11px;color:var(--ink-2)">Follows your system reduced-motion setting.</span></div>
         <div class="sheetBtns">
@@ -5889,6 +5998,14 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         e.currentTarget.disabled = false;
         e.currentTarget.textContent = 'Rescan';
         toast(ok ? `MIDI ready — ${NB.Midi.status()}` : `MIDI ${NB.Midi.status()}`, ok ? 'ok' : 'warn', 2600);
+      });
+      $('#setLearn', s).addEventListener('click', () => {
+        this.closeSheet();
+        NB.Midi.beginLearn();
+      });
+      $('#setClearCc', s).addEventListener('click', () => {
+        NB.Midi.clearMap();
+        $('#setCcCount', s).textContent = '0 mapped';
       });
       $('#setTpl', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
       $('#setPack', s).addEventListener('click', () => { this.closeSheet(); this.loadPackFile(); });
@@ -6291,7 +6408,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '2.0.0',
+    version: '2.1.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

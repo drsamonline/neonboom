@@ -5,6 +5,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.4.0] — 2026-11-11 · **final planned release**
+
+NEONBOOM is feature-frozen here. Code signing, a signed release APK, i18n and a generated docs site
+were reviewed on the same day and closed by decision — the reasoning is in
+[`ENHANCEMENTS.md` §9](ENHANCEMENTS.md#9-closed-by-decision--2026-11-11). No further feature
+releases are planned; the version will only move for bug fixes.
+
 ## [2.4.0] — 2026-11-11
 
 WSOLA time-stretch: fit a loop to the tempo without transposing it.

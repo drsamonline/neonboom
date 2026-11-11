@@ -1,5 +1,10 @@
 # NEONBOOM — enhancement list
 
+> **Status: complete.** NEONBOOM is feature-frozen at **2.4.0**. Every item on the musical roadmap
+> shipped; the four remaining ideas (code signing, release APK, i18n, docs site) were reviewed on
+> 2026-11-11 and **closed by decision, not by omission** — see §9. The lists below stay in the repo
+> as the record of what was considered and why each choice was made.
+
 Written to answer three questions: **how do we make it faster, how do we make it work with no
 network at all, and how do we make it more useful without turning a 190 KB single file into a
 framework.** Every item is scored for effort and for bloat risk, so the cheap wins can be taken
@@ -99,8 +104,8 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
 Everything in the "cheap" column is now done except **#36** (roving-tabindex keyboard nav).
-Everything in the musical roadmap is shipped. What is left is release plumbing: code signing
-(#46/#47), a generated docs site (#52) and i18n (#51).
+Everything in the musical roadmap is shipped. The remaining four items were closed by decision on
+2026-11-11 (§9) — nothing is left open.
 
 ---
 
@@ -126,13 +131,13 @@ Everything in the musical roadmap is shipped. What is left is release plumbing: 
 
 | # | Idea | Effort | Bloat |
 |---|---|---|---|
-| 46 | **Signed desktop builds in CI** (already wired; add code-signing secrets) | M | low |
-| 47 | **Release APK via Gradle in CI** (debug APK already builds) | M | low |
+| 46 | ~~Signed desktop builds~~ — **closed, see §9** | — | — |
+| 47 | ~~Release APK via Gradle~~ — **closed, see §9** | — | — |
 | 48 | ~~PWA installability check~~ — **shipped in 2.2.0** (manifest, icons, display, SW control) | — | — |
 | 49 | **Bundle-size budget** in CI: fail if `dist/neonboom.html` grows past 220 KB | S | low |
 | 50 | ~~Visual regression~~ — **shipped in 2.2.0** as geometry regression (`tests/layout.mjs`, ±4 px) | — | — |
-| 51 | **i18n**: extract UI strings into one dictionary, ship hi/bn/ta | M | med |
-| 52 | **Docs site** generated from FUNCTIONS.md | S | low |
+| 51 | ~~i18n~~ — **closed, see §9** | — | — |
+| 52 | ~~Docs site~~ — **closed, see §9** | — | — |
 
 ---
 
@@ -145,6 +150,15 @@ Everything in the musical roadmap is shipped. What is left is release plumbing: 
 
 Minification bought 98 KB, so the readable source can keep growing for a while. CI now budgets
 the **minified** file at 200 KB and the readable one at 320 KB.
+
+## 9. Closed by decision — 2026-11-11
+
+| # | Idea | Why it is not happening |
+|---|---|---|
+| 46 | Code signing for the desktop builds | Needs your certificates and a paid Apple/Windows account held as repo secrets. The installers work unsigned; the OS warns once on first launch. Not my call to make, and not worth the spend for a personal project |
+| 47 | Signed release APK via Gradle | Same shape of problem: a keystore you own, stored as a secret. The debug APK installs and runs today |
+| 51 | i18n (hi / bn / ta) | Only worth doing if you want those users. Extracting ~180 UI strings is mechanical, but a half-translated DAW is worse than an English one — and the musical vocabulary (bar, beat, send, gain, automation) needs a translator who knows the domain, not a machine pass |
+| 52 | Docs site generated from `FUNCTIONS.md` | `FUNCTIONS.md` and the README already answer "what does it do" and "how do I run it". A generated site would be a second copy of the same facts to keep in sync |
 
 ## 6. Deliberately rejected (bloat control)
 

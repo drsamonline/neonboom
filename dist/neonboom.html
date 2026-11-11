@@ -620,6 +620,31 @@ select{cursor:pointer;}
 #sceneBar .empty{font-size:11px; color:var(--ink-3); padding-left:2px;}
 @media (max-width:860px){ .sceneChip,.sceneAdd{min-height:36px;} }
 
+
+/* ------------------------------------------------------------ busy overlay */
+#busyBox{
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background:rgba(6,8,10,.72); backdrop-filter:blur(2px); z-index:60;
+}
+#busyBox.on{display:flex;}
+.busyInner{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  background:var(--bg-2); border:1px solid var(--line-2); border-radius:var(--r-lg);
+  padding:22px 28px; min-width:220px; text-align:center;
+}
+.busySpin{
+  width:26px; height:26px; border-radius:50%;
+  border:2px solid var(--line-2); border-top-color:var(--amber);
+  animation:busySpin .8s linear infinite;
+}
+@keyframes busySpin{to{transform:rotate(360deg);}}
+.busyLabel{font-size:12.5px; font-weight:600;}
+.busyTime{font-family:var(--mono); font-size:11px; color:var(--ink-3);}
+@media (prefers-reduced-motion:reduce){ .busySpin{animation:none; border-top-color:var(--amber);} }
+
+/* record button */
+#btnRecord.rec{background:var(--danger); border-color:var(--danger); color:#fff;}
+
 </style>
 </head>
 <body data-view="pads">
@@ -1991,6 +2016,136 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   function clearCache() { cache.clear(); }
 
   NB.Stretch = { stretchBuffer, forSample, clearCache, FRAME, HOP };
+})(window.NB = window.NB || {});
+
+</script>
+<script>
+/* =========================================================================
+   NEONBOOM · audio/record.js
+   Record from the default input (mic, interface, loopback) straight into a
+   sample. MediaRecorder → decodeAudioData → the same registry an imported file
+   uses, so a take behaves exactly like any other sample: pads, trim, tempo-fit,
+   stems, export.
+
+   Nothing is uploaded anywhere; the stream is consumed locally and stopped the
+   moment you stop recording.
+   ========================================================================= */
+(function (NB) {
+  'use strict';
+
+  const Recorder = {
+    stream: null,
+    recorder: null,
+    chunks: [],
+    startedAt: 0,
+    active: false,
+    error: null,
+
+    get supported() {
+      return typeof navigator !== 'undefined' &&
+        !!navigator.mediaDevices && !!navigator.mediaDevices.getUserMedia &&
+        typeof MediaRecorder !== 'undefined';
+    },
+
+    pickMime() {
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+      for (const m of candidates) {
+        try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) {}
+      }
+      return '';
+    },
+
+    async start() {
+      if (this.active) return false;
+      if (!this.supported) { this.error = 'unsupported'; NB.bus.emit('record', { state: 'unsupported' }); return false; }
+
+      try {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
+      } catch (err) {
+        this.error = err && err.name ? err.name : 'blocked';
+        NB.bus.emit('record', { state: this.error });
+        return false;
+      }
+
+      const mimeType = this.pickMime();
+      try {
+        this.recorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
+      } catch (err) {
+        this._release();
+        this.error = 'recorder-failed';
+        NB.bus.emit('record', { state: this.error });
+        return false;
+      }
+
+      this.chunks = [];
+      this.recorder.ondataavailable = (e) => { if (e.data && e.data.size) this.chunks.push(e.data); };
+      this.recorder.start(120);
+      this.startedAt = performance.now();
+      this.active = true;
+      this.error = null;
+      NB.bus.emit('record', { state: 'recording' });
+      return true;
+    },
+
+    /* Stops the stream, decodes the take and registers it as a sample. */
+    async stop() {
+      if (!this.active || !this.recorder) return null;
+      const elapsed = (performance.now() - this.startedAt) / 1000;
+
+      const done = new Promise((resolve) => {
+        this.recorder.onstop = () => resolve(new Blob(this.chunks, { type: this.recorder.mimeType || 'audio/webm' }));
+      });
+      try { this.recorder.stop(); } catch (e) {}
+      const blob = await done;
+      this._release();
+      this.active = false;
+      NB.bus.emit('record', { state: 'idle', seconds: elapsed });
+
+      if (!blob || !blob.size) { this.error = 'empty'; return null; }
+
+      try {
+        const bytes = await blob.arrayBuffer();
+        const buffer = await NB.Engine.ctx.decodeAudioData(bytes.slice(0));
+        const n = NB.Library.list().filter((s) => s.isUser).length + 1;
+        const id = NB.Library.register({
+          name: `Take ${n}`,
+          buffer,
+          category: 'Imported',
+          color: '#ef5b5b',
+          refBpm: NB.Project.bpm,
+          isUser: true,
+          rawBytes: bytes,
+        });
+        const sample = NB.Library.get(id);
+        NB.bus.emit('library:changed');
+        NB.Persistence.saveSoon();
+        return sample;
+      } catch (err) {
+        this.error = 'decode-failed';
+        NB.bus.emit('record', { state: this.error });
+        return null;
+      }
+    },
+
+    async toggle() {
+      return this.active ? this.stop() : this.start();
+    },
+
+    seconds() {
+      return this.active ? (performance.now() - this.startedAt) / 1000 : 0;
+    },
+
+    _release() {
+      if (this.recorder) { try { this.recorder.onstop = null; } catch (e) {} }
+      if (this.stream) { this.stream.getTracks().forEach((t) => t.stop()); }
+      this.recorder = null;
+      this.stream = null;
+    },
+  };
+
+  NB.Recorder = Recorder;
 })(window.NB = window.NB || {});
 
 </script>
@@ -3769,6 +3924,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   const Timeline = {
     zoom: 1,
     mode: 'edit',
+    follow: true,
     selectedClipId: null,          // primary selection (drives the inspector)
     selectedClipIds: new Set(),    // everything the bulk actions act on
     selectedTrackId: null,
@@ -4115,6 +4271,18 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.drawRuler();
     },
 
+    /* keep the playhead in view while rolling */
+    _followPlayhead(phx) {
+      if (!this.follow || !NB.Transport.playing) return;
+      const v = this.viewport;
+      const margin = Math.min(160, v.clientWidth * 0.2);
+      if (phx > v.scrollLeft + v.clientWidth - margin) {
+        v.scrollLeft = Math.max(0, phx - v.clientWidth * 0.35);
+      } else if (phx < v.scrollLeft) {
+        v.scrollLeft = Math.max(0, phx - margin);
+      }
+    },
+
     drawOverlay() {
       if (!this.octx) return;
       const W = this.vw, H = this.vh;
@@ -4307,6 +4475,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       ctx.clearRect(0, 0, this.ruler.width, this.ruler.height);
       ctx.drawImage(this._rulerBase, 0, 0);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this._followPlayhead(NB.Transport.currentSix() * this.pxPerSix());
       const phx = NB.Transport.currentSix() * this.pxPerSix() - this.viewport.scrollLeft;
       ctx.fillStyle = '#ffb020';
       ctx.beginPath();
@@ -4656,6 +4825,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.mode = m;
       this.viewport.classList.toggle('edit', m === 'edit');
       NB.bus.emit('mode', m);
+    },
+
+    setFollow(on) {
+      this.follow = !!on;
+      NB.bus.emit('follow', this.follow);
+      NB.Persistence.saveSoon();
     },
 
     /* ---- clipboard ---------------------------------------------------- */
@@ -5669,6 +5844,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.wireSheet();
       this.wireMidiLearn();
       this.wireScenes();
+      this.wireRecorder();
       this.wireInstall();
 
       this.buildVu();
@@ -6340,6 +6516,57 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       });
     },
 
+    /* ---------- busy overlay (export can take 20 s) ------------------------ */
+    busy(label) {
+      let box = $('#busyBox');
+      if (!box) {
+        box = el('div', { id: 'busyBox' });
+        box.innerHTML = '<div class="busyInner"><div class="busySpin"></div><div class="busyLabel"></div><div class="busyTime"></div></div>';
+        document.body.appendChild(box);
+      }
+      box.querySelector('.busyLabel').textContent = label;
+      box.classList.add('on');
+      const t0 = performance.now();
+      const time = box.querySelector('.busyTime');
+      const tick = setInterval(() => {
+        time.textContent = ((performance.now() - t0) / 1000).toFixed(1) + ' s';
+      }, 100);
+      return () => { clearInterval(tick); box.classList.remove('on'); };
+    },
+
+    /* ---------- input recording ------------------------------------------- */
+    wireRecorder() {
+      const btn = $('#btnRecord');
+      if (!btn) return;
+      const paint = (state, seconds) => {
+        btn.classList.toggle('rec', state === 'recording');
+        btn.textContent = state === 'recording'
+          ? `● Recording ${(seconds || 0).toFixed(0)}s — stop`
+          : '⏺ Record input';
+      };
+      let timer = 0;
+      NB.bus.on('record', (e) => {
+        clearInterval(timer);
+        paint(e.state, e.seconds);
+        if (e.state === 'recording') {
+          timer = setInterval(() => paint('recording', NB.Recorder.seconds()), 500);
+        }
+        if (e.state === 'RecordingStopped' || e.state === 'idle') paint('idle');
+      });
+
+      btn.addEventListener('click', async () => {
+        if (!NB.Recorder.supported) { toast('This browser has no MediaRecorder', 'warn', 2600); return; }
+        if (!NB.Recorder.active) {
+          const ok = await NB.Recorder.start();
+          if (!ok) toast(`Microphone ${NB.Recorder.error || 'unavailable'}`, 'warn', 3000);
+          return;
+        }
+        const sample = await NB.Recorder.stop();
+        if (sample) toast(`${sample.name} added to the pads`, 'ok', 2400);
+        else toast('Nothing recorded', 'warn', 2000);
+      });
+    },
+
     /* ---------- scenes ---------------------------------------------------- */
     wireScenes() {
       this.sceneBar = $('#sceneBar');
@@ -6551,6 +6778,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     },
 
     async exportStems() {
+      const end = this.busy('Rendering one WAV per track');
       const btn = $('#btnExport');
       const label = btn.innerHTML;
       btn.disabled = true;
@@ -6571,6 +6799,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         console.error(err);
         toast('Stem export failed: ' + err.message, 'err', 4000);
       } finally {
+        end();
         btn.disabled = false;
         btn.innerHTML = label;
       }
@@ -6744,6 +6973,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         if (mod && e.code === 'KeyC') { e.preventDefault(); NB.Timeline.copySelected(); return; }
         if (mod && e.code === 'KeyX') { e.preventDefault(); NB.Timeline.cutSelected(); return; }
         if (mod && e.code === 'KeyV') { e.preventDefault(); NB.Timeline.paste(); return; }
+        /* shift+1..8 launches a scene — 1..0/QW are pad auditions */
+        if (e.shiftKey && !mod && /^Digit[1-8]$/.test(e.code)) {
+          const list = NB.Scenes.list();
+          const scene = list[parseInt(e.code.slice(5), 10) - 1];
+          if (scene) { e.preventDefault(); NB.Scenes.launch(scene.id); return; }
+        }
         if (mod && e.code === 'KeyS') { e.preventDefault(); this.saveProjectFile(); return; }
         if (mod) return;
 
@@ -6851,7 +7086,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '2.4.1',
+    version: '2.5.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

@@ -548,3 +548,28 @@ select{cursor:pointer;}
 .sceneAdd:hover{border-color:var(--amber); color:var(--amber);}
 #sceneBar .empty{font-size:11px; color:var(--ink-3); padding-left:2px;}
 @media (max-width:860px){ .sceneChip,.sceneAdd{min-height:36px;} }
+
+
+/* ------------------------------------------------------------ busy overlay */
+#busyBox{
+  position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+  background:rgba(6,8,10,.72); backdrop-filter:blur(2px); z-index:60;
+}
+#busyBox.on{display:flex;}
+.busyInner{
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  background:var(--bg-2); border:1px solid var(--line-2); border-radius:var(--r-lg);
+  padding:22px 28px; min-width:220px; text-align:center;
+}
+.busySpin{
+  width:26px; height:26px; border-radius:50%;
+  border:2px solid var(--line-2); border-top-color:var(--amber);
+  animation:busySpin .8s linear infinite;
+}
+@keyframes busySpin{to{transform:rotate(360deg);}}
+.busyLabel{font-size:12.5px; font-weight:600;}
+.busyTime{font-family:var(--mono); font-size:11px; color:var(--ink-3);}
+@media (prefers-reduced-motion:reduce){ .busySpin{animation:none; border-top-color:var(--amber);} }
+
+/* record button */
+#btnRecord.rec{background:var(--danger); border-color:var(--danger); color:#fff;}

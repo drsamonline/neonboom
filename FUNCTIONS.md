@@ -104,6 +104,15 @@ track meters and the mixer meters. Replaced three `setInterval` timers. ✅
 | `Stretch.forSample(sample, ratio)` | Cached stretch, 24 entries, identity at ratio 1 | ✅ |
 | `Schedule.stretchRatio(clip, sample, bpm)` | 1 normally, `bpm/refBpm` when tempo-fit is on | ✅ |
 
+## 2i. Input recording — `src/audio/record.js`
+
+| Function | What it does | Status |
+|---|---|---|
+| `Recorder.start()` | `getUserMedia` + `MediaRecorder`, no DSP processing forced | ✅ |
+| `Recorder.stop()` | Stops the stream, decodes the take, registers it, returns the sample | ✅ |
+| `Recorder.seconds()` | Elapsed capture time for the button label | ✅ |
+| `Recorder.toggle()` | One button, start/stop | ✅ |
+
 ## 3. Synthesis — `src/audio/synth.js`
 
 27 generators, each rendering an `AudioBuffer` offline at 90 BPM and declaring its musical

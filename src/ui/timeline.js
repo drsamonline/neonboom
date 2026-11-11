@@ -17,6 +17,7 @@
   const Timeline = {
     zoom: 1,
     mode: 'edit',
+    follow: true,
     selectedClipId: null,          // primary selection (drives the inspector)
     selectedClipIds: new Set(),    // everything the bulk actions act on
     selectedTrackId: null,
@@ -363,6 +364,18 @@
       this.drawRuler();
     },
 
+    /* keep the playhead in view while rolling */
+    _followPlayhead(phx) {
+      if (!this.follow || !NB.Transport.playing) return;
+      const v = this.viewport;
+      const margin = Math.min(160, v.clientWidth * 0.2);
+      if (phx > v.scrollLeft + v.clientWidth - margin) {
+        v.scrollLeft = Math.max(0, phx - v.clientWidth * 0.35);
+      } else if (phx < v.scrollLeft) {
+        v.scrollLeft = Math.max(0, phx - margin);
+      }
+    },
+
     drawOverlay() {
       if (!this.octx) return;
       const W = this.vw, H = this.vh;
@@ -555,6 +568,7 @@
       ctx.clearRect(0, 0, this.ruler.width, this.ruler.height);
       ctx.drawImage(this._rulerBase, 0, 0);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this._followPlayhead(NB.Transport.currentSix() * this.pxPerSix());
       const phx = NB.Transport.currentSix() * this.pxPerSix() - this.viewport.scrollLeft;
       ctx.fillStyle = '#ffb020';
       ctx.beginPath();
@@ -904,6 +918,12 @@
       this.mode = m;
       this.viewport.classList.toggle('edit', m === 'edit');
       NB.bus.emit('mode', m);
+    },
+
+    setFollow(on) {
+      this.follow = !!on;
+      NB.bus.emit('follow', this.follow);
+      NB.Persistence.saveSoon();
     },
 
     /* ---- clipboard ---------------------------------------------------- */

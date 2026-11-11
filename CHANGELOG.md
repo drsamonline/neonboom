@@ -5,6 +5,30 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.5.0] — 2026-11-11
+
+Input recording, and the three workflow gaps dogfooding turned up.
+
+### Added
+- **Record input** (`src/audio/record.js`, `⏺ Record input` in the pads panel): `getUserMedia` →
+  `MediaRecorder` → `decodeAudioData` → the same registry an import uses, so a take is a normal
+  sample — pads, trim, tempo-fit, stems, export. The stream is stopped the moment you stop; nothing
+  is uploaded. Denied permission, an unsupported browser and an empty take each report themselves.
+- **Follow playhead** (*Follow* in the arrange bar, on by default): the timeline scrolls to keep the
+  playhead in view while rolling.
+- **Export progress**: bouncing the master or the stems now shows an overlay with the step name and
+  a running timer, instead of a frozen button for 20 seconds.
+- **Scene hotkeys**: <kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>8</kbd> launches a scene. Plain 1–0/QW stay
+  on pad auditions.
+
+### Fixed
+- `Recorder.stop()` now returns the sample object rather than an id, which is what every caller and
+  the test expected.
+
+### On the freeze
+2.4.0 was marked feature-frozen. This release exists because the owner asked for these four things
+after reading the gap list — the freeze is a default, not a wall.
+
 ## [2.4.1] — 2026-11-11
 
 Bug fixes only — found by dogfooding the app end to end (`DOGFOOD.md`).

@@ -1,6 +1,6 @@
 # NEONBOOM — enhancement list
 
-> **Status: complete.** NEONBOOM is feature-frozen at **2.4.0**. Every item on the musical roadmap
+> **Status: complete.** NEONBOOM is feature-frozen at **2.5.0**. Every item on the musical roadmap
 > shipped; the four remaining ideas (code signing, release APK, i18n, docs site) were reviewed on
 > 2026-11-11 and **closed by decision, not by omission** — see §9. The lists below stay in the repo
 > as the record of what was considered and why each choice was made.

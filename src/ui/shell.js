@@ -30,6 +30,7 @@
       this.wireSheet();
       this.wireMidiLearn();
       this.wireScenes();
+      this.wireRecorder();
       this.wireInstall();
 
       this.buildVu();
@@ -701,6 +702,57 @@
       });
     },
 
+    /* ---------- busy overlay (export can take 20 s) ------------------------ */
+    busy(label) {
+      let box = $('#busyBox');
+      if (!box) {
+        box = el('div', { id: 'busyBox' });
+        box.innerHTML = '<div class="busyInner"><div class="busySpin"></div><div class="busyLabel"></div><div class="busyTime"></div></div>';
+        document.body.appendChild(box);
+      }
+      box.querySelector('.busyLabel').textContent = label;
+      box.classList.add('on');
+      const t0 = performance.now();
+      const time = box.querySelector('.busyTime');
+      const tick = setInterval(() => {
+        time.textContent = ((performance.now() - t0) / 1000).toFixed(1) + ' s';
+      }, 100);
+      return () => { clearInterval(tick); box.classList.remove('on'); };
+    },
+
+    /* ---------- input recording ------------------------------------------- */
+    wireRecorder() {
+      const btn = $('#btnRecord');
+      if (!btn) return;
+      const paint = (state, seconds) => {
+        btn.classList.toggle('rec', state === 'recording');
+        btn.textContent = state === 'recording'
+          ? `● Recording ${(seconds || 0).toFixed(0)}s — stop`
+          : '⏺ Record input';
+      };
+      let timer = 0;
+      NB.bus.on('record', (e) => {
+        clearInterval(timer);
+        paint(e.state, e.seconds);
+        if (e.state === 'recording') {
+          timer = setInterval(() => paint('recording', NB.Recorder.seconds()), 500);
+        }
+        if (e.state === 'RecordingStopped' || e.state === 'idle') paint('idle');
+      });
+
+      btn.addEventListener('click', async () => {
+        if (!NB.Recorder.supported) { toast('This browser has no MediaRecorder', 'warn', 2600); return; }
+        if (!NB.Recorder.active) {
+          const ok = await NB.Recorder.start();
+          if (!ok) toast(`Microphone ${NB.Recorder.error || 'unavailable'}`, 'warn', 3000);
+          return;
+        }
+        const sample = await NB.Recorder.stop();
+        if (sample) toast(`${sample.name} added to the pads`, 'ok', 2400);
+        else toast('Nothing recorded', 'warn', 2000);
+      });
+    },
+
     /* ---------- scenes ---------------------------------------------------- */
     wireScenes() {
       this.sceneBar = $('#sceneBar');
@@ -912,6 +964,7 @@
     },
 
     async exportStems() {
+      const end = this.busy('Rendering one WAV per track');
       const btn = $('#btnExport');
       const label = btn.innerHTML;
       btn.disabled = true;
@@ -932,6 +985,7 @@
         console.error(err);
         toast('Stem export failed: ' + err.message, 'err', 4000);
       } finally {
+        end();
         btn.disabled = false;
         btn.innerHTML = label;
       }
@@ -1105,6 +1159,12 @@
         if (mod && e.code === 'KeyC') { e.preventDefault(); NB.Timeline.copySelected(); return; }
         if (mod && e.code === 'KeyX') { e.preventDefault(); NB.Timeline.cutSelected(); return; }
         if (mod && e.code === 'KeyV') { e.preventDefault(); NB.Timeline.paste(); return; }
+        /* shift+1..8 launches a scene — 1..0/QW are pad auditions */
+        if (e.shiftKey && !mod && /^Digit[1-8]$/.test(e.code)) {
+          const list = NB.Scenes.list();
+          const scene = list[parseInt(e.code.slice(5), 10) - 1];
+          if (scene) { e.preventDefault(); NB.Scenes.launch(scene.id); return; }
+        }
         if (mod && e.code === 'KeyS') { e.preventDefault(); this.saveProjectFile(); return; }
         if (mod) return;
 

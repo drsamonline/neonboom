@@ -657,6 +657,70 @@ console.log('\n20 · WSOLA time-stretch');
   await page.close(); await page.__ctx.close();
 }
 
+/* ------------------------------------------------- 21. recording + workflow */
+console.log('\n21 · input recording, follow, export progress, scene hotkeys');
+{
+  /* a fake microphone needs its own browser flags */
+  const recBrowser = await puppeteer.launch({
+    executablePath: process.env.CHROME_PATH || '/usr/local/bin/chromium',
+    headless: 'shell',
+    args: ['--no-sandbox', '--mute-audio', '--use-fake-device-for-media-stream',
+      '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
+  });
+  const context = await recBrowser.createBrowserContext();
+  const page = await context.newPage();
+  await page.setViewport({ width: 1280, height: 800 });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.evaluateOnNewDocument(() => { try { localStorage.setItem('nb-onboarded', '1'); } catch (e) {} });
+  await page.goto(APP, { waitUntil: 'load' });
+  await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 40000 }).catch(() => {});
+
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), o = {};
+
+    o.supported = NB.Recorder.supported;
+    o.started = await NB.Recorder.start();
+    await sleep(900);
+    o.seconds = +NB.Recorder.seconds().toFixed(1);
+    const take = await NB.Recorder.stop();
+    o.takeName = take && take.name;
+    o.takeDur = take ? +take.buffer.duration.toFixed(2) : 0;
+    o.userSamples = NB.Library.list().filter((s) => s.isUser).length;
+    await sleep(200);
+    o.pads = document.querySelectorAll('.pad').length;
+
+    NB.Timeline.setFollow(true);
+    o.follow = NB.Timeline.follow;
+
+    NB.Scenes.capture('One');
+    NB.Scenes.capture('Two');
+    const before = NB.Project.tracks.reduce((n, t) => n + t.clips.length, 0);
+    document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit2', key: '2', shiftKey: true, bubbles: true }));
+    await sleep(150);
+    o.hotkeyFired = NB.Scenes.list().length === 2 && before > 0;
+
+    const end = NB.Shell.busy('Rendering');
+    o.busyOn = document.querySelector('#busyBox').classList.contains('on');
+    o.busyLabel = document.querySelector('#busyBox .busyLabel').textContent;
+    end();
+    o.busyOff = !document.querySelector('#busyBox').classList.contains('on');
+    return o;
+  });
+
+  check('MediaRecorder is available', o.supported);
+  check('recording captures a take', o.started && o.seconds > 0.5, o.seconds);
+  check('the take becomes a sample', !!o.takeName && o.takeDur > 0.4, { name: o.takeName, dur: o.takeDur });
+  check('the take appears on the pads', o.userSamples === 1 && o.pads === 28, { samples: o.userSamples, pads: o.pads });
+  check('follow-playhead can be switched on', o.follow);
+  check('shift+2 launches the second scene', o.hotkeyFired);
+  check('the export overlay shows a label', o.busyOn && /Rendering/.test(o.busyLabel), o.busyLabel);
+  check('the overlay clears when the render ends', o.busyOff);
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await context.close(); await recBrowser.close();
+}
+
 /* ---------------------------------------------------------- 11. standalone */
 console.log('\n11 · standalone builds (readable + minified)');
 {

@@ -200,6 +200,7 @@ See [ENHANCEMENTS.md](ENHANCEMENTS.md) for the full, costed list. The short vers
 - AudioWorklet bitcrusher (the `ScriptProcessorNode` fallback is deprecated, though still universally supported)
 - MIDI-in for pads and knobs · automation lanes
 - Share links with compressed project state in the URL · sample editor (trim/normalise)
+- Optional sample pack (~6 MB, separate download) so a cold start skips synthesis entirely
 - Sample-accurate look-ahead scheduling for dense arrangements
 
 ---

@@ -148,9 +148,67 @@ These come up often. They are listed so the decision is visible rather than re-l
 | Web MIDI *output* + external synth hosting | Scope creep into a different product |
 | Video export / social sharing renders | Heavy (encoder), and the WAV already gets people into their editor |
 | A plugin (VST/AU) build | The browser is the host; a wrapper would double the maintenance surface |
-| Bundling sample packs | Kills the 190 KB single file and introduces licensing work |
+| Bundling samples **into** the app file | Would kill the 190 KB single file — but an *optional side pack* does not, see §8 |
 
 ---
+
+## 8. Optional sample pack — design
+
+The single-file promise is about the **core**: `neonboom.html` must stay small, self-contained
+and offline. An optional pack is a separate download that the app *can* use and never *needs*.
+It does not break the promise, and it is the cheapest way to make a cold start instant.
+
+### Why it is safe to ship
+
+| Concern | Answer |
+|---|---|
+| Licensing | The pack is rendered **by this app's own synth** (`src/audio/synth.js`) by a build script. No third-party samples, no clearance work, same PolyForm licence as the code. |
+| Bloat | Zero bytes added to `dist/neonboom.html`. The pack is a separate asset, fetched only if present. |
+| Offline | Downloaded once into Cache Storage, then available offline forever. If it is missing, the app synthesises exactly as it does today. |
+| Determinism | Same generators, same REF_BPM, same `SYNTH_VERSION` — a pack and a live render are sample-identical. |
+
+### Format
+
+```
+neonboom-pack-v1.zip
+├── pack.json          { version, synthVersion, refBpm, loops:[{name, category, beats, file}] }
+└── loops/
+    ├── boomBapKick.wav
+    └── … 26 more, 16-bit mono 44.1 kHz
+```
+
+- WAV (not a custom binary): debuggable, and a user can drag any file straight into the pads.
+- Mono because every generator is mono-compatible — already exploited by the loop cache.
+- Expected size: **≈ 6 MB** (≈ 70 s of mono 44.1 kHz/16-bit). Gzip gains ~5% — audio does not compress, so no deflate.
+
+### Load order (unchanged fallback chain)
+
+| Step | What happens | Cost |
+|---|---|---|
+| 1 | Loop cache in IndexedDB has the row | ~0 ms |
+| 2 | Pack present → fetch once → decode → fill the cache | ~0.4 s, then cached |
+| 3 | No pack → synthesise (today's behaviour) | ~3.7 s cold |
+
+### Where the pack comes from
+
+| Target | Delivery |
+|---|---|
+| Web / PWA | `pack/neonboom-pack-v1.zip` next to `index.html`; `HEAD` check on boot, `fetch` only if it answers |
+| Single file (`file://`) | Cannot fetch — so a **"Load pack…" file picker** in the Export/More pane; the zip goes into the loop cache like any import |
+| Electron | Shipped inside the app bundle as a resource, loaded from disk |
+| Android | Capacitor asset, copied into the web dir |
+
+### Work
+
+| # | Task | Effort | Bloat |
+|---|---|---|---|
+| 53 | `scripts/build-pack.mjs` — render all 27 loops in headless Chromium, write the zip | S | low |
+| 54 | `LoopPack.load()` — HEAD check, fetch, decode, populate `LoopCache`, register | S | low |
+| 55 | "Load pack…" picker for `file://` and for people who want to hand-carry it | S | low |
+| 56 | CI job that rebuilds the pack on a `SYNTH_VERSION` bump and attaches it to the release | S | low |
+| 57 | Document the size/licence story in README + landing ("core 216 KB · pack 6 MB, optional") | S | low |
+
+Total: roughly one day, no new dependency, no change to the app's failure modes.
 
 ## 7. Suggested order of work
 
@@ -159,3 +217,4 @@ These come up often. They are listed so the decision is visible rather than re-l
 3. **Look-ahead scheduler** (6) — unlocks tempo changes and gapless loops.
 4. **AudioWorklet bitcrusher** (8) — removes the last deprecation warning.
 5. **Automation lanes** (23) and **MIDI-in** (26) — the two features that change the ceiling.
+6. **Optional sample pack** (53–57) — the last 3 s of cold boot, at zero cost to the core file.

@@ -94,12 +94,12 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 29 | **Sample editor** (trim, normalise, fade, crop to selection) | M | med | imported loops are otherwise un-editable |
 | 30 | ~~Per-track FX send amounts~~ — **shipped in 1.4.0** (A/B on every strip, post-fader, exported) | — | — | — |
 | 31 | ~~Undo history panel with named steps~~ — **shipped in 1.4.0** (drawer → History, click to jump) | — | — | — |
-| 32 | **Project templates** (boom-bap, trap, house) built from the same demo generator | S | low | faster start than an empty grid |
+| 32 | ~~Project templates~~ — **shipped in 1.6.0** (`src/core/templates.js`) | — | — | — |
 | 33 | ~~Swing~~ — **shipped in 1.2.0** (0–60 %, playback + export) | — | — | — |
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
-22, 24, 25, 30, 31, 33 and 45 are done. The next cheapest wins are **32** (templates), **44**
-(multi-select) and **29** (sample editor).
+22, 24, 25, 30, 31, 32, 33, 35, 42, 44 and 45 are done. The next cheapest wins are **29**
+(sample editor), **41** (empty-state guidance) and **12** (one rAF for the meters).
 
 ---
 
@@ -107,16 +107,16 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 
 | # | Idea | Effort | Bloat |
 |---|---|---|---|
-| 35 | **Colour-blind safe track palette** toggle (the neon palette is pretty, not accessible) | S | low |
+| 35 | ~~Colour-blind safe palette~~ — **shipped in 1.6.0** (Okabe–Ito, More → Appearance) | — | — |
 | 36 | **Focus rings + full keyboard navigation** on the pad grid and mixer (roving tabindex) | M | low |
 | 37 | **`aria-live` announcements** for transport state and clip edits | S | low |
 | 38 | **Pinch-to-zoom** on the timeline in edit mode | S | low |
 | 39 | **Haptics on clip snap** (already on buttons) | S | low |
 | 40 | **Onboarding overlay** — three tips, shown once, dismissible | S | low |
 | 41 | **Empty-state guidance** when a track has no clips | S | low |
-| 42 | **Larger-text mode** (a 14 px root size) | S | low |
+| 42 | ~~Larger-text mode~~ — **shipped in 1.6.0** | — | — |
 | 43 | **Reduced-motion** already respected; extend to the playhead follow | S | low |
-| 44 | **Multi-select clips** (shift-click, marquee) | M | med |
+| 44 | ~~Multi-select clips~~ — **shipped in 1.6.0** (shift-click + marquee, bulk ops) | — | — |
 | 45 | ~~Copy/paste clips~~ — **shipped in 1.4.0** (Ctrl+C/X/V, paste at playhead) | — | — |
 
 ---

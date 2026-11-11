@@ -3,7 +3,7 @@
    Cache-first for the app shell so the workstation opens and plays with no
    network at all. Bump CACHE when you ship a new build.
    ========================================================================= */
-const CACHE = 'neonboom-v1.5.0';
+const CACHE = 'neonboom-v1.6.0';
 
 const ASSETS = [
   './',
@@ -17,6 +17,7 @@ const ASSETS = [
   './src/core/util.js',
   './src/core/project.js',
   './src/core/looppack.js',
+  './src/core/templates.js',
   './src/core/transport.js',
   './src/audio/synth.js',
   './src/audio/engine.js',

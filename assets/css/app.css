@@ -494,3 +494,32 @@ select{cursor:pointer;}
   input[type=range]::-webkit-slider-thumb{width:20px;height:20px;margin-top:-9px;}
 }
 @media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important;} }
+
+
+/* ---------------------------------------------------------------- palette
+   data-palette="safe" swaps the neon track colours for a colour-blind-safe
+   set (Okabe–Ito derived) and calms the accents. Track colours live in JS, so
+   the token below is read by util.TRACK_COLORS via CSS custom properties. */
+:root[data-palette="safe"]{
+  --amber:#e69f00;
+  --amber-soft:#f0c46b;
+  --ok:#009e73;
+  --danger:#d55e00;
+  --warn:#f0e442;
+}
+
+/* ------------------------------------------------------------- text size */
+:root[data-textsize="large"]{ font-size:15px; }
+:root[data-textsize="large"] .trackHead .tname{font-size:12.5px;}
+:root[data-textsize="large"] .pad .pname{font-size:12px;}
+:root[data-textsize="large"] .insp-title{font-size:14px;}
+:root[data-textsize="large"] .btn{font-size:13px;}
+
+/* --------------------------------------------------------- template rows */
+.tplRow{display:flex; flex-direction:column; gap:3px; width:100%; text-align:left;
+  background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-md);
+  padding:12px 14px; margin-bottom:8px; color:var(--ink-0); min-height:60px;}
+.tplRow:hover{border-color:var(--amber);}
+.tplName{font-size:13px; font-weight:700; display:flex; justify-content:space-between; gap:10px; align-items:baseline;}
+.tplName b{font-family:var(--mono); font-size:9.5px; font-weight:400; color:var(--ink-3);}
+.tplBlurb{font-size:11.5px; color:var(--ink-2);}

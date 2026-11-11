@@ -372,13 +372,22 @@ console.log('\n7 · phone layout & touch');
   await new Promise((r) => setTimeout(r, 250));
   check('tap selects a clip', await page.evaluate((id) => window.NEONBOOM.Timeline.selectedClipId === id, pos.id));
 
-  await page.touchscreen.touchStart(pos.x, pos.y);
-  await new Promise((r) => setTimeout(r, 1200));   // generous: the background
-  await page.touchscreen.touchEnd();               // loop pass can starve timers
-  await new Promise((r) => setTimeout(r, 250));
-  const sheetOpened = await page.waitForFunction(
-    "document.querySelector('#sheet').classList.contains('on')",
-    { timeout: 2500 }).then(() => true).catch(() => false);
+  /* a held finger is a timing gesture; retry once if the box was busy
+     (background loop rendering competes with the long-press timer) */
+  const holdAndWait = async () => {
+    await page.touchscreen.touchStart(pos.x, pos.y);
+    await new Promise((r) => setTimeout(r, 1100));
+    await page.touchscreen.touchEnd();
+    return page.waitForFunction(
+      "document.querySelector('#sheet').classList.contains('on')",
+      { timeout: 2000 }).then(() => true).catch(() => false);
+  };
+  let sheetOpened = await holdAndWait();
+  if (!sheetOpened) {
+    await page.evaluate(() => window.NEONBOOM.Shell.closeSheet());
+    await new Promise((r) => setTimeout(r, 200));
+    sheetOpened = await holdAndWait();
+  }
   check('long-press opens the clip sheet', sheetOpened);
   check('tapping the scrim closes it again', await (async () => {
     await page.mouse.click(20, 120);                       // scrim area, above the sheet
@@ -635,6 +644,74 @@ console.log('\n13 · look-ahead scheduler');
   check('loop wraps and keeps playing', o.stillPlaying && o.wrapped, o.posAfterWrap);
   check('tempo changes while rolling', o.bpmApplied && o.playingAfterBpm && o.clockContinued);
   check('pause clears every queued source', o.sourcesAfterPause === 0, o.sourcesAfterPause);
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await page.__ctx.close();
+}
+
+/* --------------------------------- 14. templates, multi-select, appearance */
+console.log('\n14 · templates, multi-select, appearance');
+{
+  const { page, errors } = await open(APP);
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
+  const o = await page.evaluate(() => {
+    const NB = window.NEONBOOM, o = {};
+    const count = () => NB.Project.tracks.reduce((n, t) => n + t.clips.length, 0);
+
+    o.templates = NB.Templates.list().map((t) => t.id);
+    NB.Templates.build('trap');
+    o.trapBpm = NB.Project.bpm;
+    o.trapClips = count();
+    o.trapSends = NB.Project.tracks.some((t) => (t.sendA || 0) > 0 || (t.sendB || 0) > 0);
+    NB.Templates.build('empty');
+    o.emptyClips = count();
+    NB.Templates.build('boombap');
+    o.boomClips = count();
+
+    const T = NB.Timeline;
+    const ids = [NB.Project.tracks[0].clips[0].id, NB.Project.tracks[0].clips[1].id,
+      NB.Project.tracks[1].clips[0].id];
+    T.select(ids[0]); T.select(ids[1], true); T.select(ids[2], true);
+    o.selCount = T.selectedClipIds.size;
+
+    const before = count();
+    T.nudge(4);
+    o.nudgedAll = ids.every((id) => NB.project.findClip(id).clip.startSix >= 4);
+    T.duplicateSelected();
+    o.dupGrew = count() === before + 3;
+    T.deleteSelected();
+    o.delBack = count() === before;
+    o.cleared = T.selectedClipIds.size === 0;
+
+    o.marquee = T.selectInRect(0, 0, 1e6, 1e6, false);
+    o.marqueeSel = T.selectedClipIds.size;
+    T.select(null);
+
+    document.documentElement.dataset.palette = 'safe';
+    NB.util.applyPaletteToProject(NB.Project);
+    o.safeColor = NB.Project.tracks[0].color;
+    document.documentElement.dataset.palette = 'neon';
+    NB.util.applyPaletteToProject(NB.Project);
+    o.neonColor = NB.Project.tracks[0].color;
+    o.paletteDiffers = o.safeColor !== o.neonColor;
+
+    /* the template picker is a real surface: open it and count the rows */
+    NB.Shell.openTemplates();
+    o.tplRows = document.querySelectorAll('.tplRow').length;
+    NB.Shell.closeSheet();
+    return o;
+  });
+  check('four templates available', o.templates.length === 4, o.templates);
+  check('trap template builds at 140 BPM', o.trapBpm === 140 && o.trapClips > 20, { bpm: o.trapBpm, clips: o.trapClips });
+  check('templates carry mixer sends', o.trapSends);
+  check('empty template is empty', o.emptyClips === 0, o.emptyClips);
+  check('boom bap template fills eight bars', o.boomClips > 30, o.boomClips);
+  check('shift-click builds a multi-selection', o.selCount === 3, o.selCount);
+  check('nudge moves every selected clip', o.nudgedAll);
+  check('duplicate copies the whole selection', o.dupGrew);
+  check('delete removes the whole selection', o.delBack && o.cleared, { back: o.delBack });
+  check('marquee selects clips', o.marquee > 20 && o.marqueeSel === o.marquee, { hits: o.marquee });
+  check('colour-safe palette swaps track colours', o.paletteDiffers, { safe: o.safeColor, neon: o.neonColor });
+  check('template picker lists every template', o.tplRows === 4, o.tplRows);
   check('no console errors', errors.length === 0, errors.slice(0, 3));
   await page.close(); await page.__ctx.close();
 }

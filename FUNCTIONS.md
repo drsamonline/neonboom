@@ -63,6 +63,11 @@ Legend: ✅ implemented and tested · 🔎 implemented, verified manually · ⚠
 | `LoopPack.tryAtBoot(engine, ms)` | Race the pack against a budget so a slow network never holds the veil | ✅ |
 | `LoopPack.probe()` | Cheap existence check (kept for callers that want it) | 🔎 |
 
+## 2d. Templates — `src/core/templates.js`
+
+`Templates.list()` · `Templates.build(id)` — Boom Bap, Trap, House, empty grid. Built from the
+live loop library, with levels, sends, swing and loop length preset. ✅
+
 ## 3. Synthesis — `src/audio/synth.js`
 
 27 generators, each rendering an `AudioBuffer` offline at 90 BPM and declaring its musical
@@ -112,6 +117,8 @@ Voices: `kickHit`, `snareHit`, `clapHit`, `hatHit`, `crashHit`, `bass808`, `stab
 | `setMode('scroll'\|'edit')` | On touch: native panning vs. clip dragging | ✅ |
 | `splitAtPlayhead/deleteSelected/duplicateSelected/nudge/quantize` | Clip operations | ✅ |
 | `copySelected/cutSelected/paste` | Clipboard, paste at the snapped playhead | ✅ |
+| `select(id, additive)` / `selectionIds()` | Multi-selection set used by every bulk action | ✅ |
+| `selectInRect(x0,y0,x1,y1)` | Marquee selection | ✅ |
 | `scrollToPlayhead()` | Follows the playhead while rolling | 🔎 |
 
 ## 6. Pads — `src/ui/pads.js`

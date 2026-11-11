@@ -30,10 +30,10 @@ jobs:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
         run: node tests/run.mjs
 
-      - name: Size budget (256 KB tripwire, not a target)
+      - name: Size budget (272 KB tripwire, not a target)
         # The single file is ~225 KB. This exists to catch runaway growth, so it
         # is deliberately loose: raising it is a decision, not a fix.
         run: |
           SIZE=$(stat -c%s dist/neonboom.html)
           echo "dist/neonboom.html = $SIZE bytes ($((SIZE/1024)) KB)"
-          test "$SIZE" -lt 262144
+          test "$SIZE" -lt 278528

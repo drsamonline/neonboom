@@ -5,6 +5,35 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.6.0] — 2026-11-11
+
+Editing and accessibility: templates, multi-select, and a palette you can actually read.
+
+### Added
+- **Templates** (`src/core/templates.js`): Boom Bap, Trap, House and an empty grid. Each is built
+  from the same loop library with mixer levels, sends, swing and loop length already set — no
+  preset assets to keep in sync.
+- **Multi-select**: shift-click to add or remove, or drag a marquee over empty lane space. Move,
+  nudge, quantise, duplicate and delete then act on the whole selection; the inspector shows a
+  bulk card instead of a single clip.
+- **Colour-blind-safe palette** (Okabe–Ito derived) and a **larger-text mode**, both in
+  *More → Appearance* and remembered in `localStorage`.
+- Track colours are now resolved through `util.paletteColor()`, so switching palettes rewrites the
+  existing tracks instead of only affecting new ones.
+
+### Changed
+- `Timeline.select(id, additive)` maintains a `Set` of selected clips; `selectionIds()` is the one
+  place bulk operations read from.
+- Dragging any clip in a multi-selection moves the whole group by the same snapped delta.
+- Marquee only engages after 6 px of movement, so a plain tap on empty space still deselects.
+
+### Fixed
+- The phone long-press test now retries once: the gesture races the background loop render, and a
+  starved timer occasionally missed the window. (The app itself was already time-checked on
+  pointerup; this is test hygiene, not a behaviour change.)
+
+---
+
 ## [1.5.0] — 2026-11-11
 
 The transport rewrite: a look-ahead scheduler replaces "schedule everything, then wrap with a

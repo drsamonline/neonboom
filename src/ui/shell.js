@@ -43,6 +43,13 @@
         $('#btnRedo').disabled = !s.canRedo;
       });
 
+      try {
+        const pal = localStorage.getItem('nb-palette');
+        const size = localStorage.getItem('nb-textsize');
+        if (pal) document.documentElement.dataset.palette = pal;
+        if (size) document.documentElement.dataset.textsize = size;
+      } catch (e) {}
+
       this.openDrawer('mixer');
       this.updateLcd();
       this.syncLoopBtn();
@@ -376,7 +383,8 @@
           <span class="val" id="shSwingVal">${Math.round((P.swing || 0) * 100)}%</span></div>
         <div class="sheetRow"><label>Metronome</label><input type="checkbox" id="shMetro" ${P.metronome ? 'checked' : ''} style="width:22px;height:22px"></div>
         <div class="sheetBtns">
-          <button class="btn" id="shDemo">Load demo</button>
+          <button class="btn" id="shDemo">Templates…</button>
+          <button class="btn" id="shSettings">Appearance</button>
           <button class="btn" id="shSave">Save project</button>
           <button class="btn" id="shOpen">Open project</button>
           <button class="btn primary" id="shWav">Export WAV</button>
@@ -393,7 +401,8 @@
       });
       $('#shSwing', s).addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
-      $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.loadDemo(); });
+      $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
+      $('#shSettings', s).addEventListener('click', () => { this.closeSheet(); this.openSettings(); });
       $('#shSave', s).addEventListener('click', () => { this.closeSheet(); this.saveProjectFile(); });
       $('#shOpen', s).addEventListener('click', () => { this.closeSheet(); this.openProjectFile(); });
       $('#shWav', s).addEventListener('click', () => { this.closeSheet(); this.exportWav(); });
@@ -558,6 +567,74 @@
     },
 
     /* ------------------------------------------------------------ projects */
+    openTemplates() {
+      const list = NB.Templates.list();
+      this.sheet(`
+        <h4>Start from a template</h4>
+        <p style="font-size:11.5px;color:var(--ink-2);margin:0 0 8px">Replaces the current arrangement. Undo brings it back.</p>
+        ${list.map((t) => `<button class="tplRow" data-tpl="${t.id}">
+            <span class="tplName">${t.name}<b>${t.bpm} BPM · ${t.bars} bars</b></span>
+            <span class="tplBlurb">${t.blurb}</span></button>`).join('')}`, true);
+      $$('.tplRow', $('#sheet')).forEach((b) => b.addEventListener('click', () => {
+        this.closeSheet();
+        this.applyTemplate(b.dataset.tpl);
+      }));
+    },
+
+    applyTemplate(id) {
+      NB.History.push('Load template');
+      NB.Templates.build(id);
+      NB.Engine.ensureTrackBuses(NB.Project.tracks.length);
+      NB.Engine.applyMix(NB.Project.tracks);
+      $('#bpm').value = NB.Project.bpm;
+      NB.bus.emit('project:replaced');
+      NB.Timeline.select(null);
+      NB.Timeline.zoomFit();
+      NB.Persistence.saveSoon();
+      this.syncLoopBtn();
+      toast(NB.Project.name + ' — press space', 'ok', 2400);
+    },
+
+    /* ---------- appearance ---------- */
+    openSettings() {
+      const root = document.documentElement;
+      this.sheet(`
+        <h4>Appearance</h4>
+        <div class="sheetRow"><label>Palette</label>
+          <div class="segmented" id="setPalette">
+            <button data-pal="neon" class="${root.dataset.palette !== 'safe' ? 'on' : ''}">Neon</button>
+            <button data-pal="safe" class="${root.dataset.palette === 'safe' ? 'on' : ''}">Colour-safe</button>
+          </div></div>
+        <div class="sheetRow"><label>Text size</label>
+          <div class="segmented" id="setText">
+            <button data-size="normal" class="${root.dataset.textsize !== 'large' ? 'on' : ''}">Normal</button>
+            <button data-size="large" class="${root.dataset.textsize === 'large' ? 'on' : ''}">Larger</button>
+          </div></div>
+        <div class="sheetRow"><label>Motion</label>
+          <span style="font-size:11px;color:var(--ink-2)">Follows your system reduced-motion setting.</span></div>
+        <div class="sheetBtns">
+          <button class="btn" id="setTpl">Templates…</button>
+          <button class="btn" id="setPack">Load sample pack</button>
+        </div>`, true);
+      const s = $('#sheet');
+      $$('#setPalette button', s).forEach((b) => b.addEventListener('click', () => {
+        root.dataset.palette = b.dataset.pal;
+        $$('#setPalette button', s).forEach((x) => x.classList.toggle('on', x === b));
+        localStorage.setItem('nb-palette', b.dataset.pal);
+        NB.util.applyPaletteToProject(NB.Project);
+        NB.bus.emit('project:replaced');
+        NB.Timeline.rebuildHeaders(); NB.Mixer.render();
+      }));
+      $$('#setText button', s).forEach((b) => b.addEventListener('click', () => {
+        root.dataset.textsize = b.dataset.size;
+        $$('#setText button', s).forEach((x) => x.classList.toggle('on', x === b));
+        localStorage.setItem('nb-textsize', b.dataset.size);
+        requestAnimationFrame(() => NB.Timeline.resize());
+      }));
+      $('#setTpl', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
+      $('#setPack', s).addEventListener('click', () => { this.closeSheet(); this.loadPackFile(); });
+    },
+
     loadDemo() {
       NB.History.push('Load demo');
       NB.project.buildDemo();

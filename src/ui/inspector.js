@@ -23,6 +23,31 @@
       const sel = T.selectedClipId ? NB.project.findClip(T.selectedClipId) : null;
       this.host.innerHTML = '';
 
+      /* several clips selected: show a bulk card instead of one clip */
+      if (T.selectedClipIds && T.selectedClipIds.size > 1) {
+        const n = T.selectedClipIds.size;
+        const card = el('div', { class: 'insp-card' });
+        card.innerHTML = `<h4>Selection</h4>
+          <div class="insp-title">${n} clips</div>
+          <div class="insp-sub">drag to move them together · shift-click to add or remove</div>
+          <div class="grid2" id="bulkBtns"></div>`;
+        const box = card.querySelector('#bulkBtns');
+        const mk = (label, fn, cls = '') => {
+          const b = el('button', { class: 'btn ' + cls, text: label });
+          b.addEventListener('click', fn);
+          box.appendChild(b);
+        };
+        mk('Duplicate', () => T.duplicateSelected());
+        mk('Quantise', () => T.quantize());
+        mk('Nudge ◀', () => T.nudge(-T.P.snap));
+        mk('Nudge ▶', () => T.nudge(T.P.snap));
+        mk('Delete', () => T.deleteSelected(), 'danger');
+        mk('Deselect', () => T.select(null));
+        this.host.appendChild(card);
+        this.host.appendChild(this.projectCard());
+        return;
+      }
+
       if (!sel) {
         this.host.appendChild(this.projectCard());
         this.host.appendChild(this.trackCard());

@@ -566,6 +566,35 @@ select{cursor:pointer;}
 }
 @media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important;} }
 
+
+/* ---------------------------------------------------------------- palette
+   data-palette="safe" swaps the neon track colours for a colour-blind-safe
+   set (Okabe–Ito derived) and calms the accents. Track colours live in JS, so
+   the token below is read by util.TRACK_COLORS via CSS custom properties. */
+:root[data-palette="safe"]{
+  --amber:#e69f00;
+  --amber-soft:#f0c46b;
+  --ok:#009e73;
+  --danger:#d55e00;
+  --warn:#f0e442;
+}
+
+/* ------------------------------------------------------------- text size */
+:root[data-textsize="large"]{ font-size:15px; }
+:root[data-textsize="large"] .trackHead .tname{font-size:12.5px;}
+:root[data-textsize="large"] .pad .pname{font-size:12px;}
+:root[data-textsize="large"] .insp-title{font-size:14px;}
+:root[data-textsize="large"] .btn{font-size:13px;}
+
+/* --------------------------------------------------------- template rows */
+.tplRow{display:flex; flex-direction:column; gap:3px; width:100%; text-align:left;
+  background:var(--bg-2); border:1px solid var(--line); border-radius:var(--r-md);
+  padding:12px 14px; margin-bottom:8px; color:var(--ink-0); min-height:60px;}
+.tplRow:hover{border-color:var(--amber);}
+.tplName{font-size:13px; font-weight:700; display:flex; justify-content:space-between; gap:10px; align-items:baseline;}
+.tplName b{font-family:var(--mono); font-size:9.5px; font-weight:400; color:var(--ink-3);}
+.tplBlurb{font-size:11.5px; color:var(--ink-2);}
+
 </style>
 </head>
 <body data-view="pads">
@@ -798,9 +827,26 @@ select{cursor:pointer;}
     },
   };
 
+  /* Okabe–Ito derived, colour-blind-safe alternative palette */
+  const SAFE_COLORS = ['#0072b2', '#e69f00', '#009e73', '#cc79a7', '#56b4e9', '#d55e00',
+    '#f0e442', '#8c6bb1', '#4daf4a', '#a6761d', '#1b9e77', '#7570b3',
+    '#66a61e', '#e7298a', '#e6ab02', '#666666'];
+
   const TRACK_COLORS = ['#4fd1c5', '#e85d9c', '#b4e61d', '#ff9f43', '#5b8def', '#ef5b5b',
     '#a56bff', '#2dd4bf', '#f2c94c', '#ff7a90', '#6fcf97', '#9b8cff',
     '#ff6b9d', '#3ddc97', '#ffb020', '#7c8cff'];
+
+  /* Track colours are stored per track, so switching palettes has to rewrite
+     them. `paletteColor(i)` is what new tracks and the switcher use. */
+  function paletteColor(i) {
+    const safe = document.documentElement.dataset.palette === 'safe';
+    const list = safe ? SAFE_COLORS : TRACK_COLORS;
+    return list[i % list.length];
+  }
+
+  function applyPaletteToProject(project) {
+    project.tracks.forEach((t, i) => { t.color = paletteColor(i); });
+  }
 
   /* ---------- toasts ---------------------------------------------------- */
   let toastHost;
@@ -850,7 +896,8 @@ select{cursor:pointer;}
   const slug = (s) => (s || 'neonboom').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
 
   NB.util = { $, $$, clamp, lerp, uid, deepClone, debounce, rafThrottle, isTouch, reducedMotion,
-    haptic, toast, el, fmtDb, fmtPct, fmtSec, slug, Grid, TRACK_COLORS, REF_BPM, SIX_PER_BAR, PROJECT_BARS, PX_PER_SIX };
+    haptic, toast, el, fmtDb, fmtPct, fmtSec, slug, Grid, TRACK_COLORS, SAFE_COLORS,
+    paletteColor, applyPaletteToProject, REF_BPM, SIX_PER_BAR, PROJECT_BARS, PX_PER_SIX };
 })(window.NB = window.NB || {});
 
 </script>
@@ -2033,7 +2080,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   function newTrack(i) {
     return {
       id: uid('trk'), name: `Track ${i + 1}`,
-      color: TRACK_COLORS[i % TRACK_COLORS.length],
+      color: NB.util.paletteColor(i),
       vol: 0.85, pan: 0, sendA: 0, sendB: 0, mute: false, solo: false, clips: [],
     };
   }
@@ -2688,6 +2735,121 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 </script>
 <script>
 /* =========================================================================
+   NEONBOOM · core/templates.js
+   Starting points built from the same loop library — no extra assets, no
+   presets to keep in sync. Each template is a function that fills Project.
+   ========================================================================= */
+(function (NB) {
+  'use strict';
+  const { uid, SIX_PER_BAR } = NB.util;
+
+  const BAR = SIX_PER_BAR;
+
+  function make(name, bpm, tracks) {
+    return { name, bpm, tracks };
+  }
+
+  /* fill a track with `count` copies of a loop every `everySix` sixteenths */
+  function fill(project, trackIdx, sampleName, everySix, count, offset = 0, gain = 1) {
+    const s = NB.Library.byName(sampleName);
+    if (!s) return;
+    const t = project.tracks[trackIdx];
+    if (!t) return;
+    const len = Math.round(s.beats * 4);
+    for (let i = 0; i < count; i++) {
+      t.clips.push({
+        id: uid('clp'), sampleId: s.id, trackId: t.id,
+        startSix: offset + i * everySix, lengthSix: len,
+        trimStartSix: 0, trimEndSix: len, gain,
+        pitch: 0, reverse: false, fadeIn: 0, fadeOut: 0,
+      });
+    }
+  }
+
+  const Templates = {
+    list() {
+      return [
+        { id: 'boombap', name: 'Boom Bap', bpm: 92, bars: 8, blurb: 'Kick, snare, hats, 808 and a stabbed chord — the classic.' },
+        { id: 'trap', name: 'Trap', bpm: 140, bars: 8, blurb: 'Rolling 32nd hats, ghost snares and a sliding 808.' },
+        { id: 'house', name: 'House', bpm: 124, bars: 8, blurb: 'Four on the floor, shaker, dub chord and an arp.' },
+        { id: 'empty', name: 'Empty grid', bpm: 90, bars: 8, blurb: 'Eight empty tracks, swing at zero. Start from nothing.' },
+      ];
+    },
+
+    build(id) {
+      const P = NB.Project;
+      NB.project.initTracks(8);
+      const t = P.tracks;
+      const names = ['Drums', 'Snare', 'Hats', 'Bass', 'Chords', 'Lead', 'FX', 'Accents'];
+      names.forEach((n, i) => { t[i].name = n; });
+      P.loopIn = 0;
+      P.loopOut = BAR * 8;
+      P.loopEnabled = true;
+      P.swing = 0;
+      P.fx = null;
+
+      if (id === 'boombap') {
+        P.name = 'Boom Bap';
+        P.bpm = 92;
+        fill(P, 0, 'Boom Bap Kick', BAR, 8);
+        fill(P, 1, 'Snare + Clap', BAR, 8);
+        fill(P, 2, 'Hi-Hat Roll', BAR, 8);
+        fill(P, 3, '808 Slide Bass', BAR * 2, 4);
+        fill(P, 4, 'Synth Stab Chord', BAR * 2, 4);
+        fill(P, 5, 'Arp Pluck Loop', BAR * 4, 2);
+        fill(P, 6, 'Vinyl Crackle Bed', BAR * 4, 2);
+        fill(P, 7, 'Crash Accent', BAR * 4, 2);
+        t[0].vol = 0.92; t[1].vol = 0.78; t[2].vol = 0.46;
+        t[4].vol = 0.55; t[5].vol = 0.48; t[6].vol = 0.32; t[7].vol = 0.62;
+        t[3].sendB = 0.08;
+        P.swing = 0.08;
+      } else if (id === 'trap') {
+        P.name = 'Trap';
+        P.bpm = 140;
+        fill(P, 0, 'Trap Kick Pattern', BAR, 8);
+        fill(P, 1, 'Trap Snare + Ghosts', BAR, 8);
+        fill(P, 2, 'Trap Hat Rolls (32nd)', BAR, 8);
+        fill(P, 3, 'Trap 808 Pattern', BAR * 2, 4);
+        fill(P, 4, 'Dub Chord', BAR * 4, 2);
+        fill(P, 5, 'Bell Melody', BAR * 4, 2);
+        fill(P, 6, 'Vinyl Crackle Bed', BAR * 4, 2);
+        fill(P, 7, 'Impact Hit', BAR * 4, 2);
+        t[0].vol = 0.9; t[1].vol = 0.7; t[2].vol = 0.42;
+        t[3].vol = 0.85; t[4].vol = 0.4; t[5].vol = 0.35;
+        t[6].vol = 0.25; t[7].vol = 0.55;
+        t[3].sendB = 0.12; t[5].sendA = 0.25; t[5].sendB = 0.3;
+        P.swing = 0.12;
+      } else if (id === 'house') {
+        P.name = 'House';
+        P.bpm = 124;
+        fill(P, 0, 'Four-on-Floor Kick', BAR, 8);
+        fill(P, 1, 'Snare + Clap', BAR * 2, 4, BAR);
+        fill(P, 2, 'Shaker Loop', BAR, 8);
+        fill(P, 3, 'Sub Bass Drone', BAR * 2, 4);
+        fill(P, 4, 'Dub Chord', BAR * 2, 4);
+        fill(P, 5, 'Arp Pluck Loop', BAR * 2, 4);
+        fill(P, 6, 'Riser FX', BAR * 8, 1);
+        fill(P, 7, 'Crash Accent', BAR * 4, 2);
+        t[0].vol = 0.9; t[1].vol = 0.55; t[2].vol = 0.4;
+        t[3].vol = 0.75; t[4].vol = 0.5; t[5].vol = 0.42;
+        t[6].vol = 0.3; t[7].vol = 0.5;
+        t[4].sendA = 0.3; t[4].sendB = 0.25; t[5].sendA = 0.35; t[5].sendB = 0.2;
+        P.swing = 0;
+      } else {
+        P.name = 'Untitled beat';
+        P.bpm = 90;
+        P.loopEnabled = false;
+      }
+      return P;
+    },
+  };
+
+  NB.Templates = Templates;
+})(window.NB = window.NB || {});
+
+</script>
+<script>
+/* =========================================================================
    NEONBOOM · core/transport.js
    Playback clock, look-ahead scheduler, loop region, metronome, live refresh.
 
@@ -2980,7 +3142,8 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   const Timeline = {
     zoom: 1,
     mode: 'edit',
-    selectedClipId: null,
+    selectedClipId: null,          // primary selection (drives the inspector)
+    selectedClipIds: new Set(),    // everything the bulk actions act on
     selectedTrackId: null,
     drag: null,
     longPressTimer: 0,
@@ -3205,6 +3368,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
       /* clips */
       const selId = this.selectedClipId;
+      const selSet = this.selectedClipIds;
       for (let i = firstTrack; i <= lastTrack; i++) {
         const track = this.tracks[i];
         if (!track) continue;
@@ -3214,7 +3378,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           if (end < firstSix || clip.startSix > lastSix) continue;
           const x = clip.startSix * px;
           const w = Math.max(3, (end - clip.startSix) * px);
-          const sel = clip.id === selId;
+          const sel = clip.id === selId || this.selectedClipIds.has(clip.id);
           const sample = NB.Library.get(clip.sampleId);
 
           /* body */
@@ -3312,6 +3476,18 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.octx.moveTo(Math.round(x) + .5, 0);
       this.octx.lineTo(Math.round(x) + .5, H);
       this.octx.stroke();
+
+      /* marquee rectangle */
+      if (this._marquee) {
+        const m = this._marquee;
+        const rx = Math.min(m.x0, m.x1) - sx, ry = Math.min(m.y0, m.y1) - sy;
+        const rw = Math.abs(m.x1 - m.x0), rh = Math.abs(m.y1 - m.y0);
+        this.octx.fillStyle = 'rgba(255,176,32,.10)';
+        this.octx.fillRect(rx, ry, rw, rh);
+        this.octx.strokeStyle = 'rgba(255,176,32,.8)';
+        this.octx.lineWidth = 1;
+        this.octx.strokeRect(rx + .5, ry + .5, rw, rh);
+      }
       this.drawRuler();
     },
 
@@ -3421,6 +3597,40 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       return { clip: null, track, trackIdx: idx };
     },
 
+    /* Rubber-band selection on an empty lane. Only engages once the pointer
+       has actually moved, so a plain tap still clears the selection. */
+    _startMarquee(e, x, y) {
+      const c = this.canvas;
+      const startX = x, startY = y;
+      let active = false;
+      const add = e.shiftKey || e.metaKey || e.ctrlKey;
+
+      const move = (ev) => {
+        const p = this._local(ev);
+        if (!active && Math.hypot(p.x - startX, p.y - startY) < 6) return;
+        if (!active) { active = true; this._marquee = { x0: startX, y0: startY, x1: p.x, y1: p.y }; }
+        this._marquee.x1 = p.x; this._marquee.y1 = p.y;
+        this.draw();
+      };
+      const up = () => {
+        c.removeEventListener('pointermove', move);
+        if (active && this._marquee) {
+          const m = this._marquee;
+          const n = this.selectInRect(m.x0, m.y0, m.x1, m.y1, add);
+          if (n) haptic(5);
+        } else {
+          this.selectedClipId = null;
+          this.selectedClipIds.clear();
+          this.draw(); this.updateStatus();
+        }
+        this._marquee = null;
+        this.draw();
+      };
+      c.addEventListener('pointermove', move);
+      c.addEventListener('pointerup', up, { once: true });
+      c.addEventListener('pointercancel', up, { once: true });
+    },
+
     _wireCanvas() {
       const c = this.canvas;
 
@@ -3435,13 +3645,17 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         $$('.trackHead', this.headsInner).forEach((r) => r.classList.toggle('sel', r.dataset.trackId === hit.track.id));
 
         if (!hit.clip) {
-          this.selectedClipId = null;
-          this.draw(); this.updateStatus();
+          /* empty lane: start a marquee unless this is a plain tap */
+          this._startMarquee(e, x, y);
           return;
         }
 
-        this.selectedClipId = hit.clip.id;
-        this.draw(); this.updateStatus();
+        if (e.shiftKey || e.metaKey || e.ctrlKey) {
+          this.select(hit.clip.id, true);
+          return;                                  // shift-click never drags
+        }
+        if (!this.selectedClipIds.has(hit.clip.id)) this.select(hit.clip.id);
+        else { this.selectedClipId = hit.clip.id; this.draw(); this.updateStatus(); }
 
         const isTouchEvent = e.pointerType !== 'mouse';
         if (isTouchEvent && this.mode === 'scroll') return;   // tap-select only
@@ -3462,7 +3676,14 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           this.drag = { type: 'move', clip: dup, startX: x, origStart: dup.startSix, origTrack: hit.track.id, moved };
           moved.v = true;
         } else {
-          this.drag = { type: 'move', clip: hit.clip, startX: x, origStart: hit.clip.startSix, origTrack: hit.track.id, moved };
+          const group = this.selectedClipIds.size > 1
+            ? this.selectionIds().map((id) => {
+                const f = NB.project.findClip(id);
+                return f ? { clip: f.clip, start: f.clip.startSix } : null;
+              }).filter(Boolean)
+            : null;
+          this.drag = { type: 'move', clip: hit.clip, startX: x, origStart: hit.clip.startSix,
+            origTrack: hit.track.id, moved, group };
         }
 
         /* long-press → clip actions. The timer is only a convenience: onUp
@@ -3500,7 +3721,14 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           if (self.drag.type === 'move') {
             const snap = self.P.snap;
             let ns = Math.round((self.drag.origStart + dxSix) / snap) * snap;
-            self.drag.clip.startSix = Math.max(0, ns);
+            const delta = Math.max(-self.drag.origStart, ns - self.drag.origStart);
+            self.drag.clip.startSix = self.drag.origStart + delta;
+            /* move the rest of the selection by the same amount */
+            if (self.selectedClipIds.size > 1 && self.drag.group) {
+              self.drag.group.forEach((g) => {
+                g.clip.startSix = Math.max(0, g.start + delta);
+              });
+            }
             const th = self.trackH();
             const ni = clamp(Math.floor(p.y / th), 0, self.tracks.length - 1);
             const nt = self.tracks[ni];
@@ -3704,11 +3932,52 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       return true;
     },
 
-    select(clipId) {
-      this.selectedClipId = clipId;
-      const f = clipId ? NB.project.findClip(clipId) : null;
-      if (f) this.selectedTrackId = f.track.id;
+    select(clipId, additive) {
+      if (!clipId) {
+        this.selectedClipId = null;
+        this.selectedClipIds.clear();
+      } else if (additive) {
+        if (this.selectedClipIds.has(clipId)) {
+          this.selectedClipIds.delete(clipId);
+          if (this.selectedClipId === clipId) this.selectedClipId = [...this.selectedClipIds][0] || null;
+        } else {
+          this.selectedClipIds.add(clipId);
+          this.selectedClipId = clipId;
+        }
+        const f = clipId ? NB.project.findClip(clipId) : null;
+        if (f) this.selectedTrackId = f.track.id;
+      } else {
+        this.selectedClipId = clipId;
+        this.selectedClipIds = new Set([clipId]);
+        const f = NB.project.findClip(clipId);
+        if (f) this.selectedTrackId = f.track.id;
+      }
       this.draw(); this.updateStatus();
+    },
+
+    selectInRect(x0, y0, x1, y1, additive) {
+      const px = this.pxPerSix(), th = this.trackH();
+      const left = Math.min(x0, x1) / px, right = Math.max(x0, x1) / px;
+      const top = Math.min(y0, y1), bottom = Math.max(y0, y1);
+      const hits = [];
+      this.tracks.forEach((track, ti) => {
+        const ty = ti * th;
+        if (ty + th < top || ty > bottom) return;
+        track.clips.forEach((c) => {
+          const end = c.startSix + (c.trimEndSix - c.trimStartSix);
+          if (end >= left && c.startSix <= right) hits.push(c.id);
+        });
+      });
+      if (!additive) this.selectedClipIds.clear();
+      hits.forEach((id) => this.selectedClipIds.add(id));
+      this.selectedClipId = [...this.selectedClipIds][0] || null;
+      this.draw(); this.updateStatus();
+      return hits.length;
+    },
+
+    selectionIds() {
+      if (this.selectedClipIds.size) return [...this.selectedClipIds];
+      return this.selectedClipId ? [this.selectedClipId] : [];
     },
 
     splitAtPlayhead() {
@@ -3735,10 +4004,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     },
 
     deleteSelected() {
-      if (!this.selectedClipId) { toast('Nothing selected', 'warn'); return; }
-      NB.History.push('Delete clip');
-      NB.project.removeClip(this.selectedClipId);
+      const ids = this.selectionIds();
+      if (!ids.length) { toast('Nothing selected', 'warn'); return; }
+      NB.History.push(ids.length > 1 ? `Delete ${ids.length} clips` : 'Delete clip');
+      ids.forEach((id) => NB.project.removeClip(id));
       this.selectedClipId = null;
+      this.selectedClipIds.clear();
       NB.bus.emit('clips:changed');
       NB.Transport.refresh();
       NB.Persistence.saveSoon();
@@ -3746,40 +4017,47 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     },
 
     duplicateSelected() {
-      const id = this.selectedClipId;
-      if (!id) { toast('Nothing selected', 'warn'); return; }
-      const f = NB.project.findClip(id);
-      if (!f) return;
-      NB.History.push('Duplicate clip');
-      const dup = JSON.parse(JSON.stringify(f.clip));
-      dup.id = uid('clp');
-      dup.startSix = f.clip.startSix + (f.clip.trimEndSix - f.clip.trimStartSix);
-      f.track.clips.push(dup);
-      this.selectedClipId = dup.id;
+      const ids = this.selectionIds();
+      if (!ids.length) { toast('Nothing selected', 'warn'); return; }
+      NB.History.push(ids.length > 1 ? `Duplicate ${ids.length} clips` : 'Duplicate clip');
+      const made = [];
+      ids.forEach((id) => {
+        const f = NB.project.findClip(id);
+        if (!f) return;
+        const dup = JSON.parse(JSON.stringify(f.clip));
+        dup.id = uid('clp');
+        dup.startSix = f.clip.startSix + (f.clip.trimEndSix - f.clip.trimStartSix);
+        f.track.clips.push(dup);
+        made.push(dup.id);
+      });
+      this.selectedClipIds = new Set(made);
+      this.selectedClipId = made[0] || null;
       NB.bus.emit('clips:changed');
       NB.Persistence.saveSoon();
     },
 
     nudge(sixDelta) {
-      const id = this.selectedClipId;
-      if (!id) return;
-      const f = NB.project.findClip(id);
-      if (!f) return;
-      NB.History.push('Nudge clip');
-      f.clip.startSix = Math.max(0, f.clip.startSix + sixDelta);
+      const ids = this.selectionIds();
+      if (!ids.length) return;
+      NB.History.push(ids.length > 1 ? `Nudge ${ids.length} clips` : 'Nudge clip');
+      ids.forEach((id) => {
+        const f = NB.project.findClip(id);
+        if (f) f.clip.startSix = Math.max(0, f.clip.startSix + sixDelta);
+      });
       NB.bus.emit('clips:changed');
       NB.Transport.refresh();
       NB.Persistence.saveSoon();
     },
 
     quantize() {
-      const id = this.selectedClipId;
-      if (!id) { toast('Nothing selected', 'warn'); return; }
-      const f = NB.project.findClip(id);
-      if (!f) return;
+      const ids = this.selectionIds();
+      if (!ids.length) { toast('Nothing selected', 'warn'); return; }
       NB.History.push('Quantise');
       const s = this.P.snap;
-      f.clip.startSix = Math.round(f.clip.startSix / s) * s;
+      ids.forEach((id) => {
+        const f = NB.project.findClip(id);
+        if (f) f.clip.startSix = Math.round(f.clip.startSix / s) * s;
+      });
       NB.bus.emit('clips:changed');
       NB.Transport.refresh();
       toast('Quantized to ' + (s === 1 ? '1/16' : s === 2 ? '1/8' : '1/4'), 'ok', 1200);
@@ -4292,6 +4570,31 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       const sel = T.selectedClipId ? NB.project.findClip(T.selectedClipId) : null;
       this.host.innerHTML = '';
 
+      /* several clips selected: show a bulk card instead of one clip */
+      if (T.selectedClipIds && T.selectedClipIds.size > 1) {
+        const n = T.selectedClipIds.size;
+        const card = el('div', { class: 'insp-card' });
+        card.innerHTML = `<h4>Selection</h4>
+          <div class="insp-title">${n} clips</div>
+          <div class="insp-sub">drag to move them together · shift-click to add or remove</div>
+          <div class="grid2" id="bulkBtns"></div>`;
+        const box = card.querySelector('#bulkBtns');
+        const mk = (label, fn, cls = '') => {
+          const b = el('button', { class: 'btn ' + cls, text: label });
+          b.addEventListener('click', fn);
+          box.appendChild(b);
+        };
+        mk('Duplicate', () => T.duplicateSelected());
+        mk('Quantise', () => T.quantize());
+        mk('Nudge ◀', () => T.nudge(-T.P.snap));
+        mk('Nudge ▶', () => T.nudge(T.P.snap));
+        mk('Delete', () => T.deleteSelected(), 'danger');
+        mk('Deselect', () => T.select(null));
+        this.host.appendChild(card);
+        this.host.appendChild(this.projectCard());
+        return;
+      }
+
       if (!sel) {
         this.host.appendChild(this.projectCard());
         this.host.appendChild(this.trackCard());
@@ -4565,6 +4868,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         $('#btnUndo').disabled = !s.canUndo;
         $('#btnRedo').disabled = !s.canRedo;
       });
+
+      try {
+        const pal = localStorage.getItem('nb-palette');
+        const size = localStorage.getItem('nb-textsize');
+        if (pal) document.documentElement.dataset.palette = pal;
+        if (size) document.documentElement.dataset.textsize = size;
+      } catch (e) {}
 
       this.openDrawer('mixer');
       this.updateLcd();
@@ -4899,7 +5209,8 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           <span class="val" id="shSwingVal">${Math.round((P.swing || 0) * 100)}%</span></div>
         <div class="sheetRow"><label>Metronome</label><input type="checkbox" id="shMetro" ${P.metronome ? 'checked' : ''} style="width:22px;height:22px"></div>
         <div class="sheetBtns">
-          <button class="btn" id="shDemo">Load demo</button>
+          <button class="btn" id="shDemo">Templates…</button>
+          <button class="btn" id="shSettings">Appearance</button>
           <button class="btn" id="shSave">Save project</button>
           <button class="btn" id="shOpen">Open project</button>
           <button class="btn primary" id="shWav">Export WAV</button>
@@ -4916,7 +5227,8 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       });
       $('#shSwing', s).addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
-      $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.loadDemo(); });
+      $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
+      $('#shSettings', s).addEventListener('click', () => { this.closeSheet(); this.openSettings(); });
       $('#shSave', s).addEventListener('click', () => { this.closeSheet(); this.saveProjectFile(); });
       $('#shOpen', s).addEventListener('click', () => { this.closeSheet(); this.openProjectFile(); });
       $('#shWav', s).addEventListener('click', () => { this.closeSheet(); this.exportWav(); });
@@ -5081,6 +5393,74 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     },
 
     /* ------------------------------------------------------------ projects */
+    openTemplates() {
+      const list = NB.Templates.list();
+      this.sheet(`
+        <h4>Start from a template</h4>
+        <p style="font-size:11.5px;color:var(--ink-2);margin:0 0 8px">Replaces the current arrangement. Undo brings it back.</p>
+        ${list.map((t) => `<button class="tplRow" data-tpl="${t.id}">
+            <span class="tplName">${t.name}<b>${t.bpm} BPM · ${t.bars} bars</b></span>
+            <span class="tplBlurb">${t.blurb}</span></button>`).join('')}`, true);
+      $$('.tplRow', $('#sheet')).forEach((b) => b.addEventListener('click', () => {
+        this.closeSheet();
+        this.applyTemplate(b.dataset.tpl);
+      }));
+    },
+
+    applyTemplate(id) {
+      NB.History.push('Load template');
+      NB.Templates.build(id);
+      NB.Engine.ensureTrackBuses(NB.Project.tracks.length);
+      NB.Engine.applyMix(NB.Project.tracks);
+      $('#bpm').value = NB.Project.bpm;
+      NB.bus.emit('project:replaced');
+      NB.Timeline.select(null);
+      NB.Timeline.zoomFit();
+      NB.Persistence.saveSoon();
+      this.syncLoopBtn();
+      toast(NB.Project.name + ' — press space', 'ok', 2400);
+    },
+
+    /* ---------- appearance ---------- */
+    openSettings() {
+      const root = document.documentElement;
+      this.sheet(`
+        <h4>Appearance</h4>
+        <div class="sheetRow"><label>Palette</label>
+          <div class="segmented" id="setPalette">
+            <button data-pal="neon" class="${root.dataset.palette !== 'safe' ? 'on' : ''}">Neon</button>
+            <button data-pal="safe" class="${root.dataset.palette === 'safe' ? 'on' : ''}">Colour-safe</button>
+          </div></div>
+        <div class="sheetRow"><label>Text size</label>
+          <div class="segmented" id="setText">
+            <button data-size="normal" class="${root.dataset.textsize !== 'large' ? 'on' : ''}">Normal</button>
+            <button data-size="large" class="${root.dataset.textsize === 'large' ? 'on' : ''}">Larger</button>
+          </div></div>
+        <div class="sheetRow"><label>Motion</label>
+          <span style="font-size:11px;color:var(--ink-2)">Follows your system reduced-motion setting.</span></div>
+        <div class="sheetBtns">
+          <button class="btn" id="setTpl">Templates…</button>
+          <button class="btn" id="setPack">Load sample pack</button>
+        </div>`, true);
+      const s = $('#sheet');
+      $$('#setPalette button', s).forEach((b) => b.addEventListener('click', () => {
+        root.dataset.palette = b.dataset.pal;
+        $$('#setPalette button', s).forEach((x) => x.classList.toggle('on', x === b));
+        localStorage.setItem('nb-palette', b.dataset.pal);
+        NB.util.applyPaletteToProject(NB.Project);
+        NB.bus.emit('project:replaced');
+        NB.Timeline.rebuildHeaders(); NB.Mixer.render();
+      }));
+      $$('#setText button', s).forEach((b) => b.addEventListener('click', () => {
+        root.dataset.textsize = b.dataset.size;
+        $$('#setText button', s).forEach((x) => x.classList.toggle('on', x === b));
+        localStorage.setItem('nb-textsize', b.dataset.size);
+        requestAnimationFrame(() => NB.Timeline.resize());
+      }));
+      $('#setTpl', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
+      $('#setPack', s).addEventListener('click', () => { this.closeSheet(); this.loadPackFile(); });
+    },
+
     loadDemo() {
       NB.History.push('Load demo');
       NB.project.buildDemo();
@@ -5346,7 +5726,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '1.5.0',
+    version: '1.6.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

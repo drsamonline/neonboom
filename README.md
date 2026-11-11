@@ -11,11 +11,11 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.6.0-ffb020)](CHANGELOG.md)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
-[![Tests](https://img.shields.io/badge/headless_tests-127_assertions_passing-41d18a)](#testing)
+[![Tests](https://img.shields.io/badge/headless_tests-140_assertions_passing-41d18a)](#testing)
 [![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
 [![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
@@ -38,6 +38,9 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 | ⚡ **Fast** | Loops are rendered once and cached in IndexedDB as 16-bit mono, so a warm start is a memory copy: **~4.7 s cold → ~1.6 s warm**, with the priority half ready before the veil lifts. |
 | 🎯 **Sample-accurate** | A look-ahead scheduler queues 180 ms of audio at a time, so loop points land on the clock instead of on a `setTimeout`, tempo changes apply while rolling, and a 64-bar project never builds hundreds of nodes up front. |
 | 📦 **Optional pack** | A separate 6.9 MB zip of the same 27 loops, rendered by the app itself. Bundled builds load it automatically; on the web it is a button. The core file never grows. |
+| 🧰 **Templates** | Boom Bap, Trap, House or an empty grid — built from the same loops, with mixer levels and sends already set. |
+| 🖱 **Multi-select** | Shift-click or drag a marquee, then move, nudge, quantise, duplicate or delete the whole selection at once. |
+| ♿ **Accessible** | Colour-blind-safe palette, larger-text mode, 40 px+ targets, reduced-motion aware, keyboard-first. |
 | 🎛 **Pads** | 27 synthesised loops as waveform tiles. Tap to audition, arm REC to drop one at the playhead, or drag a pad onto the timeline. |
 | 🎚 **Arrangement** | Canvas timeline: drag to move, drag edges to trim, alt-drag to duplicate, split, nudge, quantise, snap 1/16 – 1/4 bar, loop region with draggable handles. |
 | 🎹 **Mixer** | Fader, pan, mute, solo and a live level meter on every strip, plus a master meter. |
@@ -111,6 +114,7 @@ Opening `index.html` straight from disk also works — the app is plain classic 
 | Split at playhead | <kbd>S</kbd> | Zoom / fit | <kbd>−</kbd> <kbd>+</kbd> <kbd>F</kbd> |
 | Delete clip | <kbd>Del</kbd> | Save project file | <kbd>Ctrl</kbd> <kbd>S</kbd> |
 | Copy / cut / paste clip | <kbd>Ctrl</kbd> <kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> | History panel | drawer → *History* |
+| Add to selection | <kbd>Shift</kbd> + click | Marquee select | drag over empty lane |
 | Mute track | <kbd>M</kbd> | Audition pads | <kbd>1</kbd>…<kbd>0</kbd> <kbd>Q</kbd> <kbd>W</kbd> |
 
 On a phone: tap a pad to hear it, tap a clip to select it, **long-press** a clip for duplicate / split / quantise / delete, and use the **Scroll / Edit** switch above the timeline to choose between panning and dragging.
@@ -131,6 +135,7 @@ assets/img/                icons
 src/core/util.js           helpers, musical grid math, toasts
 src/core/project.js        sample registry, project state, undo/redo, IndexedDB, loop cache, project files, demo beat
 src/core/looppack.js       optional pack: zip reader, decode, install
+src/core/templates.js      Boom Bap / Trap / House / empty starting points
 src/core/transport.js      playback clock, look-ahead scheduler, loop, metronome, live refresh
 src/audio/synth.js         procedural loop synthesis (27 generators)
 src/audio/engine.js        AudioContext, master FX chain, track buses, meters, click, preview
@@ -179,7 +184,7 @@ npm run build:pack             # re-renders pack/neonboom-pack-v1.zip from the s
 npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **127 assertions across three harnesses (103 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
+Latest run: **140 assertions across three harnesses (116 app · 18 pack · 6 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
 
 ---
 

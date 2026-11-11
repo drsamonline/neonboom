@@ -17,7 +17,8 @@
   const Timeline = {
     zoom: 1,
     mode: 'edit',
-    selectedClipId: null,
+    selectedClipId: null,          // primary selection (drives the inspector)
+    selectedClipIds: new Set(),    // everything the bulk actions act on
     selectedTrackId: null,
     drag: null,
     longPressTimer: 0,
@@ -242,6 +243,7 @@
 
       /* clips */
       const selId = this.selectedClipId;
+      const selSet = this.selectedClipIds;
       for (let i = firstTrack; i <= lastTrack; i++) {
         const track = this.tracks[i];
         if (!track) continue;
@@ -251,7 +253,7 @@
           if (end < firstSix || clip.startSix > lastSix) continue;
           const x = clip.startSix * px;
           const w = Math.max(3, (end - clip.startSix) * px);
-          const sel = clip.id === selId;
+          const sel = clip.id === selId || this.selectedClipIds.has(clip.id);
           const sample = NB.Library.get(clip.sampleId);
 
           /* body */
@@ -349,6 +351,18 @@
       this.octx.moveTo(Math.round(x) + .5, 0);
       this.octx.lineTo(Math.round(x) + .5, H);
       this.octx.stroke();
+
+      /* marquee rectangle */
+      if (this._marquee) {
+        const m = this._marquee;
+        const rx = Math.min(m.x0, m.x1) - sx, ry = Math.min(m.y0, m.y1) - sy;
+        const rw = Math.abs(m.x1 - m.x0), rh = Math.abs(m.y1 - m.y0);
+        this.octx.fillStyle = 'rgba(255,176,32,.10)';
+        this.octx.fillRect(rx, ry, rw, rh);
+        this.octx.strokeStyle = 'rgba(255,176,32,.8)';
+        this.octx.lineWidth = 1;
+        this.octx.strokeRect(rx + .5, ry + .5, rw, rh);
+      }
       this.drawRuler();
     },
 
@@ -458,6 +472,40 @@
       return { clip: null, track, trackIdx: idx };
     },
 
+    /* Rubber-band selection on an empty lane. Only engages once the pointer
+       has actually moved, so a plain tap still clears the selection. */
+    _startMarquee(e, x, y) {
+      const c = this.canvas;
+      const startX = x, startY = y;
+      let active = false;
+      const add = e.shiftKey || e.metaKey || e.ctrlKey;
+
+      const move = (ev) => {
+        const p = this._local(ev);
+        if (!active && Math.hypot(p.x - startX, p.y - startY) < 6) return;
+        if (!active) { active = true; this._marquee = { x0: startX, y0: startY, x1: p.x, y1: p.y }; }
+        this._marquee.x1 = p.x; this._marquee.y1 = p.y;
+        this.draw();
+      };
+      const up = () => {
+        c.removeEventListener('pointermove', move);
+        if (active && this._marquee) {
+          const m = this._marquee;
+          const n = this.selectInRect(m.x0, m.y0, m.x1, m.y1, add);
+          if (n) haptic(5);
+        } else {
+          this.selectedClipId = null;
+          this.selectedClipIds.clear();
+          this.draw(); this.updateStatus();
+        }
+        this._marquee = null;
+        this.draw();
+      };
+      c.addEventListener('pointermove', move);
+      c.addEventListener('pointerup', up, { once: true });
+      c.addEventListener('pointercancel', up, { once: true });
+    },
+
     _wireCanvas() {
       const c = this.canvas;
 
@@ -472,13 +520,17 @@
         $$('.trackHead', this.headsInner).forEach((r) => r.classList.toggle('sel', r.dataset.trackId === hit.track.id));
 
         if (!hit.clip) {
-          this.selectedClipId = null;
-          this.draw(); this.updateStatus();
+          /* empty lane: start a marquee unless this is a plain tap */
+          this._startMarquee(e, x, y);
           return;
         }
 
-        this.selectedClipId = hit.clip.id;
-        this.draw(); this.updateStatus();
+        if (e.shiftKey || e.metaKey || e.ctrlKey) {
+          this.select(hit.clip.id, true);
+          return;                                  // shift-click never drags
+        }
+        if (!this.selectedClipIds.has(hit.clip.id)) this.select(hit.clip.id);
+        else { this.selectedClipId = hit.clip.id; this.draw(); this.updateStatus(); }
 
         const isTouchEvent = e.pointerType !== 'mouse';
         if (isTouchEvent && this.mode === 'scroll') return;   // tap-select only
@@ -499,7 +551,14 @@
           this.drag = { type: 'move', clip: dup, startX: x, origStart: dup.startSix, origTrack: hit.track.id, moved };
           moved.v = true;
         } else {
-          this.drag = { type: 'move', clip: hit.clip, startX: x, origStart: hit.clip.startSix, origTrack: hit.track.id, moved };
+          const group = this.selectedClipIds.size > 1
+            ? this.selectionIds().map((id) => {
+                const f = NB.project.findClip(id);
+                return f ? { clip: f.clip, start: f.clip.startSix } : null;
+              }).filter(Boolean)
+            : null;
+          this.drag = { type: 'move', clip: hit.clip, startX: x, origStart: hit.clip.startSix,
+            origTrack: hit.track.id, moved, group };
         }
 
         /* long-press → clip actions. The timer is only a convenience: onUp
@@ -537,7 +596,14 @@
           if (self.drag.type === 'move') {
             const snap = self.P.snap;
             let ns = Math.round((self.drag.origStart + dxSix) / snap) * snap;
-            self.drag.clip.startSix = Math.max(0, ns);
+            const delta = Math.max(-self.drag.origStart, ns - self.drag.origStart);
+            self.drag.clip.startSix = self.drag.origStart + delta;
+            /* move the rest of the selection by the same amount */
+            if (self.selectedClipIds.size > 1 && self.drag.group) {
+              self.drag.group.forEach((g) => {
+                g.clip.startSix = Math.max(0, g.start + delta);
+              });
+            }
             const th = self.trackH();
             const ni = clamp(Math.floor(p.y / th), 0, self.tracks.length - 1);
             const nt = self.tracks[ni];
@@ -741,11 +807,52 @@
       return true;
     },
 
-    select(clipId) {
-      this.selectedClipId = clipId;
-      const f = clipId ? NB.project.findClip(clipId) : null;
-      if (f) this.selectedTrackId = f.track.id;
+    select(clipId, additive) {
+      if (!clipId) {
+        this.selectedClipId = null;
+        this.selectedClipIds.clear();
+      } else if (additive) {
+        if (this.selectedClipIds.has(clipId)) {
+          this.selectedClipIds.delete(clipId);
+          if (this.selectedClipId === clipId) this.selectedClipId = [...this.selectedClipIds][0] || null;
+        } else {
+          this.selectedClipIds.add(clipId);
+          this.selectedClipId = clipId;
+        }
+        const f = clipId ? NB.project.findClip(clipId) : null;
+        if (f) this.selectedTrackId = f.track.id;
+      } else {
+        this.selectedClipId = clipId;
+        this.selectedClipIds = new Set([clipId]);
+        const f = NB.project.findClip(clipId);
+        if (f) this.selectedTrackId = f.track.id;
+      }
       this.draw(); this.updateStatus();
+    },
+
+    selectInRect(x0, y0, x1, y1, additive) {
+      const px = this.pxPerSix(), th = this.trackH();
+      const left = Math.min(x0, x1) / px, right = Math.max(x0, x1) / px;
+      const top = Math.min(y0, y1), bottom = Math.max(y0, y1);
+      const hits = [];
+      this.tracks.forEach((track, ti) => {
+        const ty = ti * th;
+        if (ty + th < top || ty > bottom) return;
+        track.clips.forEach((c) => {
+          const end = c.startSix + (c.trimEndSix - c.trimStartSix);
+          if (end >= left && c.startSix <= right) hits.push(c.id);
+        });
+      });
+      if (!additive) this.selectedClipIds.clear();
+      hits.forEach((id) => this.selectedClipIds.add(id));
+      this.selectedClipId = [...this.selectedClipIds][0] || null;
+      this.draw(); this.updateStatus();
+      return hits.length;
+    },
+
+    selectionIds() {
+      if (this.selectedClipIds.size) return [...this.selectedClipIds];
+      return this.selectedClipId ? [this.selectedClipId] : [];
     },
 
     splitAtPlayhead() {
@@ -772,10 +879,12 @@
     },
 
     deleteSelected() {
-      if (!this.selectedClipId) { toast('Nothing selected', 'warn'); return; }
-      NB.History.push('Delete clip');
-      NB.project.removeClip(this.selectedClipId);
+      const ids = this.selectionIds();
+      if (!ids.length) { toast('Nothing selected', 'warn'); return; }
+      NB.History.push(ids.length > 1 ? `Delete ${ids.length} clips` : 'Delete clip');
+      ids.forEach((id) => NB.project.removeClip(id));
       this.selectedClipId = null;
+      this.selectedClipIds.clear();
       NB.bus.emit('clips:changed');
       NB.Transport.refresh();
       NB.Persistence.saveSoon();
@@ -783,40 +892,47 @@
     },
 
     duplicateSelected() {
-      const id = this.selectedClipId;
-      if (!id) { toast('Nothing selected', 'warn'); return; }
-      const f = NB.project.findClip(id);
-      if (!f) return;
-      NB.History.push('Duplicate clip');
-      const dup = JSON.parse(JSON.stringify(f.clip));
-      dup.id = uid('clp');
-      dup.startSix = f.clip.startSix + (f.clip.trimEndSix - f.clip.trimStartSix);
-      f.track.clips.push(dup);
-      this.selectedClipId = dup.id;
+      const ids = this.selectionIds();
+      if (!ids.length) { toast('Nothing selected', 'warn'); return; }
+      NB.History.push(ids.length > 1 ? `Duplicate ${ids.length} clips` : 'Duplicate clip');
+      const made = [];
+      ids.forEach((id) => {
+        const f = NB.project.findClip(id);
+        if (!f) return;
+        const dup = JSON.parse(JSON.stringify(f.clip));
+        dup.id = uid('clp');
+        dup.startSix = f.clip.startSix + (f.clip.trimEndSix - f.clip.trimStartSix);
+        f.track.clips.push(dup);
+        made.push(dup.id);
+      });
+      this.selectedClipIds = new Set(made);
+      this.selectedClipId = made[0] || null;
       NB.bus.emit('clips:changed');
       NB.Persistence.saveSoon();
     },
 
     nudge(sixDelta) {
-      const id = this.selectedClipId;
-      if (!id) return;
-      const f = NB.project.findClip(id);
-      if (!f) return;
-      NB.History.push('Nudge clip');
-      f.clip.startSix = Math.max(0, f.clip.startSix + sixDelta);
+      const ids = this.selectionIds();
+      if (!ids.length) return;
+      NB.History.push(ids.length > 1 ? `Nudge ${ids.length} clips` : 'Nudge clip');
+      ids.forEach((id) => {
+        const f = NB.project.findClip(id);
+        if (f) f.clip.startSix = Math.max(0, f.clip.startSix + sixDelta);
+      });
       NB.bus.emit('clips:changed');
       NB.Transport.refresh();
       NB.Persistence.saveSoon();
     },
 
     quantize() {
-      const id = this.selectedClipId;
-      if (!id) { toast('Nothing selected', 'warn'); return; }
-      const f = NB.project.findClip(id);
-      if (!f) return;
+      const ids = this.selectionIds();
+      if (!ids.length) { toast('Nothing selected', 'warn'); return; }
       NB.History.push('Quantise');
       const s = this.P.snap;
-      f.clip.startSix = Math.round(f.clip.startSix / s) * s;
+      ids.forEach((id) => {
+        const f = NB.project.findClip(id);
+        if (f) f.clip.startSix = Math.round(f.clip.startSix / s) * s;
+      });
       NB.bus.emit('clips:changed');
       NB.Transport.refresh();
       toast('Quantized to ' + (s === 1 ? '1/16' : s === 2 ? '1/8' : '1/4'), 'ok', 1200);

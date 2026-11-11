@@ -67,9 +67,26 @@
     },
   };
 
+  /* Okabe–Ito derived, colour-blind-safe alternative palette */
+  const SAFE_COLORS = ['#0072b2', '#e69f00', '#009e73', '#cc79a7', '#56b4e9', '#d55e00',
+    '#f0e442', '#8c6bb1', '#4daf4a', '#a6761d', '#1b9e77', '#7570b3',
+    '#66a61e', '#e7298a', '#e6ab02', '#666666'];
+
   const TRACK_COLORS = ['#4fd1c5', '#e85d9c', '#b4e61d', '#ff9f43', '#5b8def', '#ef5b5b',
     '#a56bff', '#2dd4bf', '#f2c94c', '#ff7a90', '#6fcf97', '#9b8cff',
     '#ff6b9d', '#3ddc97', '#ffb020', '#7c8cff'];
+
+  /* Track colours are stored per track, so switching palettes has to rewrite
+     them. `paletteColor(i)` is what new tracks and the switcher use. */
+  function paletteColor(i) {
+    const safe = document.documentElement.dataset.palette === 'safe';
+    const list = safe ? SAFE_COLORS : TRACK_COLORS;
+    return list[i % list.length];
+  }
+
+  function applyPaletteToProject(project) {
+    project.tracks.forEach((t, i) => { t.color = paletteColor(i); });
+  }
 
   /* ---------- toasts ---------------------------------------------------- */
   let toastHost;
@@ -119,5 +136,6 @@
   const slug = (s) => (s || 'neonboom').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
 
   NB.util = { $, $$, clamp, lerp, uid, deepClone, debounce, rafThrottle, isTouch, reducedMotion,
-    haptic, toast, el, fmtDb, fmtPct, fmtSec, slug, Grid, TRACK_COLORS, REF_BPM, SIX_PER_BAR, PROJECT_BARS, PX_PER_SIX };
+    haptic, toast, el, fmtDb, fmtPct, fmtSec, slug, Grid, TRACK_COLORS, SAFE_COLORS,
+    paletteColor, applyPaletteToProject, REF_BPM, SIX_PER_BAR, PROJECT_BARS, PX_PER_SIX };
 })(window.NB = window.NB || {});

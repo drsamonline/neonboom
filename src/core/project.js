@@ -61,7 +61,7 @@
   function newTrack(i) {
     return {
       id: uid('trk'), name: `Track ${i + 1}`,
-      color: TRACK_COLORS[i % TRACK_COLORS.length],
+      color: NB.util.paletteColor(i),
       vol: 0.85, pan: 0, sendA: 0, sendB: 0, mute: false, solo: false, clips: [],
     };
   }

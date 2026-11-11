@@ -5,6 +5,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.6.0] — 2026-11-11 · **final release**
+
+Every item on the audit list is shipped and the gap list is empty. See
+[`ENHANCEMENTS.md`](ENHANCEMENTS.md) §9 for what was declined and §10 for what dogfooding found.
+No further feature releases are planned; the version moves only for bug fixes.
+
 ## [2.6.0] — 2026-11-11
 
 The last six gaps on the list, all closed.

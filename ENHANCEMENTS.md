@@ -1,9 +1,10 @@
 # NEONBOOM — enhancement list
 
-> **Status: complete.** NEONBOOM is feature-frozen at **2.5.0**. Every item on the musical roadmap
-> shipped; the four remaining ideas (code signing, release APK, i18n, docs site) were reviewed on
-> 2026-11-11 and **closed by decision, not by omission** — see §9. The lists below stay in the repo
-> as the record of what was considered and why each choice was made.
+> **Status: complete — 2.6.0, 2026-11-11.** Every item on the audit list is shipped, including the
+> ten gaps found by dogfooding (§10). The four remaining ideas (code signing, release APK, i18n,
+> docs site) were **closed by decision, not by omission** — see §9. One design question stays open on
+> purpose: a *master* automation lane, so the master FX could be automated rather than only per-track
+> sends. The lists below stay in the repo as the record of what was considered and why.
 
 Written to answer three questions: **how do we make it faster, how do we make it work with no
 network at all, and how do we make it more useful without turning a 190 KB single file into a

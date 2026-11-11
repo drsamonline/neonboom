@@ -30,6 +30,19 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 
 ---
 
+## Status
+
+**Complete at 2.6.0 (2026-11-11).** Every item on the audit list shipped: pads, arrangement, mixer
+with sends, master FX, automation for level/pan/both sends, templates, clip editor, stems, scenes,
+MIDI notes + CC learn, WSOLA tempo-fit, microphone recording.
+
+| | |
+|---|---|
+| Open work | **none** — the gap list is empty |
+| Closed by decision | code signing · signed release APK · i18n · docs site ([§9](ENHANCEMENTS.md#9-closed-by-decision--2026-11-11)) |
+| One open design question | a *master* automation lane, so the master FX could be automated rather than per-track sends |
+| Policy | bug fixes and small improvements welcome; new subsystems need a design note first, like the pack (§8) and scenes (§8b) got |
+
 ## Why this exists
 
 Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is the other thing: a small DAW-shaped instrument with a real scheduler, real FX, real export — and it still opens instantly, works on a phone, and keeps working when the network is gone.

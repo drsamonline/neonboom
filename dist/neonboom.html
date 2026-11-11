@@ -281,6 +281,17 @@ input,select{font:inherit; color:inherit;}
 .trackHead .tname:hover{background:var(--bg-2);}
 .trackHead .tname:focus{background:var(--bg-2); border-color:var(--line-3); outline:none;}
 .trackHead .num{font-family:var(--mono); font-size:8.5px; color:var(--ink-3);}
+.trackHead .tgrip{
+  background:none; border:0; color:var(--ink-3); font-size:12px; line-height:1;
+  padding:0; cursor:grab; touch-action:none; flex:0 0 auto;
+  min-width:14px; min-height:14px;
+}
+.trackHead .tgrip:hover{color:var(--amber);}
+.trackHead .tgrip:active{cursor:grabbing;}
+/* touch: a 30 px hit box without growing the row (negative margins absorb it) */
+@media (max-width:860px){
+  .trackHead .tgrip{min-width:30px; min-height:30px; margin:-6px -2px -6px -6px; font-size:15px;}
+}
 .trackHead .tbtn{
   width:24px; height:22px; border-radius:3px; border:1px solid var(--line-2);
   background:var(--bg-2); color:var(--ink-2); font-size:9px; font-weight:800; padding:0;

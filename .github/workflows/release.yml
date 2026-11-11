@@ -24,6 +24,7 @@ jobs:
         with:
           files: |
             dist/neonboom.html
+            pack/neonboom-pack-v1.zip
             neonboom-source.zip
           generate_release_notes: true
 
@@ -47,8 +48,11 @@ jobs:
       - name: Stage the app into the shell
         shell: bash
         run: |
-          mkdir -p electron/app
-          cp dist/neonboom.html electron/app/
+          mkdir -p electron/app/pack
+          cp dist/neonboom.html electron/app/index.html
+          cp pack/neonboom-pack-v1.zip electron/app/pack/
+          # the shell serves from file://, so tell the app the pack is bundled
+          sed -i 's|<title>|<meta name="neonboom-pack-local" content="1">\n<title>|' electron/app/index.html
       - name: Package
         working-directory: electron
         run: |

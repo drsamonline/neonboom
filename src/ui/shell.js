@@ -246,8 +246,10 @@
             <button class="btn" id="exOpen">Open project file</button>
           </div>
           <div class="row">
+            <button class="btn" id="exPack">Load sample pack (.zip)…</button>
             <button class="btn danger" id="exClear">Clear autosave &amp; start over</button>
           </div>
+          <p style="font-size:11px;color:var(--ink-2)" id="exPackNote"></p>
           <p style="font-size:11px;color:var(--ink-2)">Tip: bounce a short loop region for a sample pack, or the whole arrangement for a track. Stems render each track on its own, through the same master chain, and arrive as one zip. Long renders (&gt;8 min) take a few seconds and a chunk of memory.</p>
         </div>`;
       $('#exWav', host).addEventListener('click', () => this.exportWav(false));
@@ -255,6 +257,14 @@
       $('#exStems', host).addEventListener('click', () => this.exportStems());
       $('#exJson', host).addEventListener('click', () => this.saveProjectFile());
       $('#exOpen', host).addEventListener('click', () => this.openProjectFile());
+      const note = $('#exPackNote', host);
+      if (note) {
+        note.textContent = NB.LoopPack.lastResult === 'installed'
+          ? 'Pack installed — loops came from the pack instead of synthesis.'
+          : 'Optional: a pack of the 27 loops (~7 MB) skips synthesis on a cold start. The app works without it.';
+      }
+      $('#exPack', host).addEventListener('click', () => this.loadPackFile());
+
       $('#exClear', host).addEventListener('click', async () => {
         if (!confirm('Clear the autosaved project and start fresh? This cannot be undone.')) return;
         await NB.Persistence.clear();
@@ -339,6 +349,7 @@
           <button class="btn" id="shOpen">Open project</button>
           <button class="btn primary" id="shWav">Export WAV</button>
           <button class="btn" id="shHelp">Shortcuts</button>
+          <button class="btn" id="shPack">Load sample pack</button>
           <button class="btn danger" id="shClear">Start over</button>
         </div>`);
       const s = $('#sheet');
@@ -355,6 +366,7 @@
       $('#shOpen', s).addEventListener('click', () => { this.closeSheet(); this.openProjectFile(); });
       $('#shWav', s).addEventListener('click', () => { this.closeSheet(); this.exportWav(); });
       $('#shHelp', s).addEventListener('click', () => { this.closeSheet(); this.openDrawer('help'); });
+      $('#shPack', s).addEventListener('click', () => { this.closeSheet(); this.loadPackFile(); });
       $('#shClear', s).addEventListener('click', async () => {
         if (!confirm('Clear the autosaved project and start fresh?')) return;
         await NB.Persistence.clear(); location.reload();
@@ -634,6 +646,29 @@
         btn.disabled = false;
         btn.innerHTML = label;
       }
+    },
+
+    /* Optional side pack: fetch it when hosted, pick it when not. */
+    async loadPackFile() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.zip,application/zip';
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file) return;
+        toast('Reading pack…', '', 1400);
+        try {
+          const n = await NB.LoopPack.fromFile(file, NB.Engine);
+          if (!n) { toast('No usable loops in that zip', 'warn', 3000); return; }
+          NB.bus.emit('library:changed');
+          NB.Pads.render();
+          toast(`${n} loops installed from the pack`, 'ok', 2600);
+        } catch (err) {
+          console.error(err);
+          toast('Could not read that pack: ' + err.message, 'err', 4000);
+        }
+      });
+      input.click();
     },
 
     /* ----------------------------------------------------------- keyboard */

@@ -22,7 +22,7 @@ function createWindow() {
     },
   });
 
-  win.loadFile(path.join(__dirname, 'app', 'neonboom.html'));
+  win.loadFile(path.join(__dirname, 'app', 'index.html'));
 
   // external links open in the real browser
   win.webContents.setWindowOpenHandler(({ url }) => {

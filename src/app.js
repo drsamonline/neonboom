@@ -40,7 +40,7 @@
   ];
 
   const App = {
-    version: '1.2.0',
+    version: '1.3.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');
@@ -130,6 +130,25 @@
       }
       mark('storage');
 
+      /* ---------- the optional side pack sits between cache and synth ----------
+         It is only pulled automatically when the pack ships *with* the app
+         (a <meta> the desktop/Android build injects) or when the URL asks for
+         it. Auto-downloading 7 MB on the open web would be slower than just
+         synthesising, so the web default is the "Load pack…" button. */
+      const packLocal = !!document.querySelector('meta[name="neonboom-pack-local"]');
+      const packAsked = new URLSearchParams(location.search).has('pack');
+      if ((packLocal || packAsked) && !NB.Library.has(idOf('boomBapKick'))) {
+        set(10, 'loading the bundled sample pack…');
+        const got = await NB.LoopPack.tryAtBoot(E, packLocal ? 6000 : 2500);
+        if (got > 0) {
+          hydrated = got;
+          set(12, `${got} loops from the pack`);
+        } else if (got === -1) {
+          NB.LoopPack.load(E).then((n) => { if (n) { NB.bus.emit('library:changed'); NB.Pads.render(); } });
+        }
+      }
+      mark('packMs');
+
       const phase1 = allEntries.filter(([e]) => PRIORITY.has(e[2]) && !NB.Library.has(idOf(e[2])));
       const phase2 = allEntries.filter(([e]) => !PRIORITY.has(e[2]) && !NB.Library.has(idOf(e[2])));
       totalPending = phase1.length + phase2.length;
@@ -137,7 +156,7 @@
       if (hydrated) set(12, `${hydrated} loops restored from cache`);
       await runQueue(phase1, 6);
       mark('phase1');
-      Object.assign(T, { hydrated, phase1: phase1.length, phase2: phase2.length });
+      Object.assign(T, { hydrated, pack: NB.LoopPack.lastResult, packMs: T.packMs, phase1: phase1.length, phase2: phase2.length });
       App.timings = T;   // live reference: later marks keep landing in it
 
       /* ---------- project + UI ---------- */

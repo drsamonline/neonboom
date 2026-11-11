@@ -48,6 +48,16 @@ Legend: ✅ implemented and tested · 🔎 implemented, verified manually · ⚠
 | `Schedule.when(clip, fromSix, start, bpm, swing)` | context time for a clip | ✅ |
 | `Schedule.clip(ctx, dest, clip, sample, opts)` | builds the source + gain envelope (gain, fade in/out, reverse offset) and starts it; used by playback **and** export | ✅ |
 
+## 2c. Optional pack — `src/core/looppack.js`
+
+| Function | What it does | Status |
+|---|---|---|
+| `readZip(buffer)` | Store/deflate zip reader (EOCD → central dir → entries), no dependency | ✅ |
+| `LoopPack.load(engine)` | Fetch `pack/neonboom-pack-v1.zip`, unzip, decode in parallel, register | ✅ |
+| `LoopPack.fromFile(file, engine)` | Install from a picked file (the `file://` path); also writes the loop cache | ✅ |
+| `LoopPack.tryAtBoot(engine, ms)` | Race the pack against a budget so a slow network never holds the veil | ✅ |
+| `LoopPack.probe()` | Cheap existence check (kept for callers that want it) | 🔎 |
+
 ## 3. Synthesis — `src/audio/synth.js`
 
 27 generators, each rendering an `AudioBuffer` offline at 90 BPM and declaring its musical
@@ -75,6 +85,7 @@ Voices: `kickHit`, `snareHit`, `clapHit`, `hatHit`, `crashHit`, `bass808`, `stab
 | `LoopCache.many/all/put/hydrate` | 16-bit PCM loop cache in IndexedDB, mono when channels match | ✅ |
 | `normaliseClip(clip)` | fills in optional clip fields on load | ✅ |
 | `reversedBuffer(sample)` | cached reversed copy for reverse playback | ✅ |
+| `LoopCache.many/all/put/hydrate` | 16-bit PCM loop cache in IndexedDB, mono when channels match | ✅ |
 | `buildDemo()` | The 8-bar demo arrangement | ✅ |
 
 ## 5. Timeline — `src/ui/timeline.js`

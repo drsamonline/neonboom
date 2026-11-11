@@ -202,13 +202,16 @@ neonboom-pack-v1.zip
 
 | # | Task | Effort | Bloat |
 |---|---|---|---|
-| 53 | `scripts/build-pack.mjs` — render all 27 loops in headless Chromium, write the zip | S | low |
-| 54 | `LoopPack.load()` — HEAD check, fetch, decode, populate `LoopCache`, register | S | low |
-| 55 | "Load pack…" picker for `file://` and for people who want to hand-carry it | S | low |
-| 56 | CI job that rebuilds the pack on a `SYNTH_VERSION` bump and attaches it to the release | S | low |
-| 57 | Document the size/licence story in README + landing ("core 216 KB · pack 6 MB, optional") | S | low |
+| 53 | ~~`scripts/build-pack.mjs`~~ — **shipped in 1.3.0** | — | — |
+| 54 | ~~`LoopPack.load()`~~ — **shipped in 1.3.0** (single fetch, parallel decode, no HEAD round trip) | — | — |
+| 55 | ~~"Load pack…" picker~~ — **shipped in 1.3.0** (Export pane + More sheet) | — | — |
+| 56 | ~~CI attaches the pack~~ — **shipped in 1.3.0** (release + Pages + desktop payload) | — | — |
+| 57 | ~~Size/licence story in README + landing~~ — **shipped in 1.3.0** | — | — |
 
-Total: roughly one day, no new dependency, no change to the app's failure modes.
+**Measured after shipping:** the pack is 6.9 MB and installs in ~2.0 s on a local server
+(1.5 s of that is the fetch, 0.5 s the decode). That is *not* faster than synthesising the
+priority half, which is why it is opt-in on the web and automatic only when bundled.
+The loop cache remains the real win; the pack is for wrapped builds and offline hand-carry.
 
 ## 7. Suggested order of work
 

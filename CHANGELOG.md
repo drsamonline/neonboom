@@ -5,6 +5,36 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.3.0] — 2026-11-11
+
+The optional pack. The core file is unchanged in spirit — still one self-contained
+`dist/neonboom.html` — but a second, separate asset can now skip synthesis entirely.
+
+### Added
+- **`pack/neonboom-pack-v1.zip`** (6.9 MB): the 27 loops as mono 16-bit WAVs plus a
+  `pack.json` manifest, rendered by the app's own synth via `scripts/build-pack.mjs`.
+  No third-party samples, so the PolyForm licence covers it like the code.
+- **`src/core/looppack.js`**: dependency-free zip reader (store + deflate via
+  `DecompressionStream`), parallel decode, install into the library. Boot order is now
+  **loop cache → pack → synthesise**.
+- **"Load pack…"** in the Export pane and the More sheet, for `file://` and for anyone
+  who wants to hand-carry the pack.
+- Bundled builds (Electron, Android) get a `<meta name="neonboom-pack-local">` tag and load
+  the pack automatically; the open web can opt in with `?pack=1`.
+- `npm run build:pack` and `npm run test:pack`.
+
+### Why it is opt-in on the web
+Measured, not assumed: fetching 6.9 MB takes ~1.5 s even on a local server, while the
+priority half of the library synthesises in about the same time. On a slow connection the
+pack would make the first visit *slower*, so the web default is the button, and the loop
+cache already makes every visit after the first instant.
+
+### Changed
+- Pages deploy ships `pack/`; releases attach the pack; the desktop payload includes it.
+- The zip writer is shared in spirit between the app (`NB.Wav.zip`) and the build script.
+
+---
+
 ## [1.2.0] — 2026-11-11
 
 The speed-and-groove release: it takes the top of the 1.1 roadmap.

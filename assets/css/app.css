@@ -523,3 +523,28 @@ select{cursor:pointer;}
 .tplName{font-size:13px; font-weight:700; display:flex; justify-content:space-between; gap:10px; align-items:baseline;}
 .tplName b{font-family:var(--mono); font-size:9.5px; font-weight:400; color:var(--ink-3);}
 .tplBlurb{font-size:11.5px; color:var(--ink-2);}
+
+
+/* ------------------------------------------------------------- scene strip */
+#sceneBar{
+  display:flex; align-items:center; gap:6px; flex:0 0 auto; overflow-x:auto;
+  padding:6px 10px; background:var(--bg-1); border-bottom:1px solid var(--line);
+  scrollbar-width:thin;
+}
+.sceneChip{
+  display:flex; align-items:center; gap:6px; flex:0 0 auto;
+  background:var(--bg-2); border:1px solid var(--line-2); color:var(--ink-1);
+  border-radius:20px; padding:5px 12px; font-size:11.5px; font-weight:600;
+  min-height:30px; white-space:nowrap; touch-action:manipulation;
+}
+.sceneChip:hover{border-color:var(--amber); color:var(--amber);}
+.sceneChip.active{background:var(--amber); border-color:var(--amber); color:#1a1200;}
+.sceneChip b{font-family:var(--mono); font-size:9px; font-weight:400; opacity:.7;}
+.sceneAdd{
+  display:flex; align-items:center; gap:5px; flex:0 0 auto; margin-left:auto;
+  background:transparent; border:1px dashed var(--line-2); color:var(--ink-2);
+  border-radius:20px; padding:5px 12px; font-size:11px; font-weight:700; min-height:30px;
+}
+.sceneAdd:hover{border-color:var(--amber); color:var(--amber);}
+#sceneBar .empty{font-size:11px; color:var(--ink-3); padding-left:2px;}
+@media (max-width:860px){ .sceneChip,.sceneAdd{min-height:36px;} }

@@ -29,6 +29,7 @@
       this.wireKeyboard();
       this.wireSheet();
       this.wireMidiLearn();
+      this.wireScenes();
       this.wireInstall();
 
       this.buildVu();
@@ -398,6 +399,7 @@
           <span class="val" id="shSwingVal">${Math.round((P.swing || 0) * 100)}%</span></div>
         <div class="sheetRow"><label>Metronome</label><input type="checkbox" id="shMetro" ${P.metronome ? 'checked' : ''} style="width:22px;height:22px"></div>
         <div class="sheetBtns">
+          <button class="btn" id="shScenes">Scenes…</button>
           <button class="btn" id="shDemo">Templates…</button>
           <button class="btn" id="shSettings">Appearance</button>
           <button class="btn" id="shSave">Save project</button>
@@ -417,6 +419,7 @@
       $('#shSwing', s).addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
       $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
+      $('#shScenes', s).addEventListener('click', () => { this.closeSheet(); this.openScenes(); });
       $('#shSettings', s).addEventListener('click', () => { this.closeSheet(); this.openSettings(); });
       $('#shSave', s).addEventListener('click', () => { this.closeSheet(); this.saveProjectFile(); });
       $('#shOpen', s).addEventListener('click', () => { this.closeSheet(); this.openProjectFile(); });
@@ -611,6 +614,34 @@
       try { localStorage.setItem('nb-onboarded', '1'); } catch (e) {}
     },
 
+    openScenes() {
+      const list = NB.Scenes.list();
+      this.sheet(`
+        <h4>Scenes</h4>
+        <p style="font-size:11.5px;color:var(--ink-2);margin:0 0 8px">A scene is a snapshot of the whole arrangement. Launching while playing waits for the next bar.</p>
+        ${list.length ? list.map((sc) => `<button class="tplRow" data-scene="${sc.id}">
+            <span class="tplName">${escapeHtml(sc.name)}<b>${sc.bpm} BPM · ${sc.tracks.length} tracks</b></span>
+            <span class="tplBlurb">tap to launch · long-press to delete</span></button>`).join('')
+          : '<p style="font-size:12px;color:var(--ink-3)">No scenes yet.</p>'}
+        <div class="sheetBtns">
+          <button class="btn" id="scSave">Save current</button>
+          <button class="btn" id="scClose">Done</button>
+        </div>`, true);
+      const s = $('#sheet');
+      $$('[data-scene]', s).forEach((b) => b.addEventListener('click', () => {
+        this.closeSheet();
+        NB.Scenes.launch(b.dataset.scene);
+      }));
+      $('#scSave', s).addEventListener('click', () => {
+        const name = prompt('Scene name', `Scene ${list.length + 1}`);
+        if (name === null) return;
+        NB.Scenes.capture(name.trim().slice(0, 24) || `Scene ${list.length + 1}`);
+        this.closeSheet();
+        toast('Scene saved', 'ok', 1600);
+      });
+      $('#scClose', s).addEventListener('click', () => this.closeSheet());
+    },
+
     openTemplates() {
       const list = NB.Templates.list();
       this.sheet(`
@@ -660,6 +691,57 @@
         toast(`CC ${b.cc} → ${b.target}`, 'ok', 2200);
         this.announce(`Bound controller ${b.cc} to ${b.target}`);
       });
+    },
+
+    /* ---------- scenes ---------------------------------------------------- */
+    wireScenes() {
+      this.sceneBar = $('#sceneBar');
+      NB.bus.on('scenes', () => this.renderScenes());
+      NB.bus.on('project:replaced', () => this.renderScenes());
+      this.renderScenes();
+    },
+
+    renderScenes() {
+      const bar = this.sceneBar || $('#sceneBar');
+      if (!bar) return;
+      const list = NB.Scenes.list();
+      bar.innerHTML = '';
+      if (!list.length) {
+        const hint = el('span', { class: 'empty', text: 'Scenes: save the current arrangement to switch between sections live' });
+        bar.appendChild(hint);
+      }
+      list.forEach((sc) => {
+        const chip = el('button', { class: 'sceneChip', title: `${sc.name} — click to launch, alt-click to delete, double-click to rename` });
+        chip.innerHTML = `<span>${escapeHtml(sc.name)}</span><b>${sc.bpm}</b>`;
+        chip.addEventListener('click', (e) => {
+          if (e.altKey || e.metaKey) {
+            NB.Scenes.remove(sc.id);
+            toast('Scene deleted', '', 1400);
+            return;
+          }
+          NB.Scenes.launch(sc.id);
+          $$('.sceneChip', bar).forEach((c) => c.classList.remove('active'));
+          chip.classList.add('active');
+        });
+        chip.addEventListener('dblclick', () => {
+          const name = prompt('Scene name', sc.name);
+          if (name) NB.Scenes.rename(sc.id, name.trim().slice(0, 24));
+        });
+        let hold = 0;
+        chip.addEventListener('pointerdown', () => { hold = setTimeout(() => { NB.Scenes.remove(sc.id); toast('Scene deleted', '', 1400); }, 700); });
+        chip.addEventListener('pointerup', () => clearTimeout(hold));
+        chip.addEventListener('pointerleave', () => clearTimeout(hold));
+        bar.appendChild(chip);
+      });
+
+      const add = el('button', { class: 'sceneAdd', text: '+ Save scene' });
+      add.addEventListener('click', () => {
+        const name = prompt('Scene name', `Scene ${list.length + 1}`);
+        if (name === null) return;
+        NB.Scenes.capture(name.trim().slice(0, 24) || `Scene ${list.length + 1}`);
+        toast('Scene saved', 'ok', 1600);
+      });
+      bar.appendChild(add);
     },
 
     /* ---------- appearance ---------- */

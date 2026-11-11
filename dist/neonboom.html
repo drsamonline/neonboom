@@ -595,6 +595,31 @@ select{cursor:pointer;}
 .tplName b{font-family:var(--mono); font-size:9.5px; font-weight:400; color:var(--ink-3);}
 .tplBlurb{font-size:11.5px; color:var(--ink-2);}
 
+
+/* ------------------------------------------------------------- scene strip */
+#sceneBar{
+  display:flex; align-items:center; gap:6px; flex:0 0 auto; overflow-x:auto;
+  padding:6px 10px; background:var(--bg-1); border-bottom:1px solid var(--line);
+  scrollbar-width:thin;
+}
+.sceneChip{
+  display:flex; align-items:center; gap:6px; flex:0 0 auto;
+  background:var(--bg-2); border:1px solid var(--line-2); color:var(--ink-1);
+  border-radius:20px; padding:5px 12px; font-size:11.5px; font-weight:600;
+  min-height:30px; white-space:nowrap; touch-action:manipulation;
+}
+.sceneChip:hover{border-color:var(--amber); color:var(--amber);}
+.sceneChip.active{background:var(--amber); border-color:var(--amber); color:#1a1200;}
+.sceneChip b{font-family:var(--mono); font-size:9px; font-weight:400; opacity:.7;}
+.sceneAdd{
+  display:flex; align-items:center; gap:5px; flex:0 0 auto; margin-left:auto;
+  background:transparent; border:1px dashed var(--line-2); color:var(--ink-2);
+  border-radius:20px; padding:5px 12px; font-size:11px; font-weight:700; min-height:30px;
+}
+.sceneAdd:hover{border-color:var(--amber); color:var(--amber);}
+#sceneBar .empty{font-size:11px; color:var(--ink-3); padding-left:2px;}
+@media (max-width:860px){ .sceneChip,.sceneAdd{min-height:36px;} }
+
 </style>
 </head>
 <body data-view="pads">
@@ -696,6 +721,8 @@ select{cursor:pointer;}
         <span class="hint" id="hint">Drag clips · drag edges to trim · shift-drag ruler for loop</span>
         <button class="btn" id="btnAddTrack" title="Add track">+ Track</button>
       </div>
+
+      <div id="sceneBar" aria-label="Scenes"></div>
 
       <div class="arrangeHead">
         <div class="headSpacer"><span>TRACKS</span></div>
@@ -2157,6 +2184,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
     swing: 0,                       // 0-0.6, delays every second 16th
     tracks: [],
     metronome: false,
+    scenes: [],
     fx: null,                       // last FX rack values (restored on boot)
   };
 
@@ -2380,6 +2408,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           id: 'current', name: Project.name, bpm: Project.bpm, snap: Project.snap,
           loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
           metronome: Project.metronome, swing: Project.swing, fx: Project.fx || null,
+          scenes: Project.scenes || [],
           userSampleCount: Library.list().filter((x) => x.isUser).length,
           tracks: Project.tracks, savedAt: Date.now(),
         });
@@ -2438,6 +2467,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       Project.loopEnabled = !!proj.loopEnabled;
       Project.metronome = !!proj.metronome;
       Project.swing = proj.swing || 0;
+      Project.scenes = Array.isArray(proj.scenes) ? proj.scenes : [];
       Project.fx = proj.fx || null;
       Project.tracks = proj.tracks.map((t) => ({
         ...t,
@@ -2573,6 +2603,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       name: Project.name, bpm: Project.bpm, snap: Project.snap,
       loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
       swing: Project.swing,
+      scenes: Project.scenes || [],
       tracks: Project.tracks.map((t) => ({
         name: t.name, color: t.color, vol: t.vol, pan: t.pan,
         sendA: t.sendA || 0, sendB: t.sendB || 0, mute: t.mute, solo: t.solo,
@@ -3125,6 +3156,129 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   };
 
   NB.Midi = Midi;
+})(window.NB = window.NB || {});
+
+</script>
+<script>
+/* =========================================================================
+   NEONBOOM · core/scenes.js
+   A scene is a named snapshot of the arrangement — tracks, clips, mixer,
+   automation, loop region and tempo. Launching one is quantised to the next
+   bar so a switch lands on a downbeat instead of mid-beat.
+
+   No second data model: a scene is the same objects the project already
+   holds, deep-cloned. Undo, autosave and project files work unchanged.
+   ========================================================================= */
+(function (NB) {
+  'use strict';
+  const { uid, Grid, deepClone } = NB.util;
+
+  const Scenes = {
+    _pending: 0,
+
+    list() { return NB.Project.scenes || (NB.Project.scenes = []); },
+
+    /* Snapshot the current arrangement into a scene. */
+    capture(name, id) {
+      const P = NB.Project;
+      const scene = {
+        id: id || uid('scn'),
+        name: name || `Scene ${this.list().length + 1}`,
+        bpm: P.bpm,
+        loopIn: P.loopIn,
+        loopOut: P.loopOut,
+        loopEnabled: P.loopEnabled,
+        swing: P.swing || 0,
+        tracks: deepClone(P.tracks),
+        savedAt: Date.now(),
+      };
+      const list = this.list();
+      const at = id ? list.findIndex((s) => s.id === id) : -1;
+      if (at >= 0) list[at] = scene;
+      else list.push(scene);
+      NB.bus.emit('scenes');
+      NB.Persistence.saveSoon();
+      return scene;
+    },
+
+    remove(id) {
+      const list = this.list();
+      const i = list.findIndex((s) => s.id === id);
+      if (i < 0) return false;
+      list.splice(i, 1);
+      NB.bus.emit('scenes');
+      NB.Persistence.saveSoon();
+      return true;
+    },
+
+    rename(id, name) {
+      const scene = this.list().find((s) => s.id === id);
+      if (!scene) return false;
+      scene.name = name || scene.name;
+      NB.bus.emit('scenes');
+      NB.Persistence.saveSoon();
+      return true;
+    },
+
+    get(id) { return this.list().find((s) => s.id === id) || null; },
+
+    /* Apply a snapshot. `keepPosition` leaves the playhead where it is. */
+    apply(scene) {
+      const P = NB.Project;
+      P.tracks = deepClone(scene.tracks);
+      P.bpm = scene.bpm;
+      P.loopIn = scene.loopIn;
+      P.loopOut = scene.loopOut;
+      P.loopEnabled = scene.loopEnabled;
+      P.swing = scene.swing || 0;
+
+      NB.Engine.ensureTrackBuses(P.tracks.length);
+      NB.Engine.applyMix(P.tracks);
+      const bpmField = document.getElementById('bpm');
+      if (bpmField) bpmField.value = P.bpm;
+
+      NB.Timeline.selectedClipId = null;
+      NB.Timeline.selectedClipIds.clear();
+      NB.bus.emit('project:replaced');
+      NB.Timeline.resize();
+      NB.Transport.reanchor();
+    },
+
+    /* Launch, quantised to the next bar when the transport is rolling. */
+    launch(id) {
+      const scene = this.get(id);
+      if (!scene) return false;
+      NB.History.push('Launch scene');
+
+      if (!NB.Transport.playing) {
+        this.apply(scene);
+        NB.util.toast(scene.name, '', 1400);
+        return true;
+      }
+
+      const P = NB.Project;
+      const now = NB.Transport.currentSix();
+      const barLen = 16;
+      let nextBar = Math.ceil((now + 0.01) / barLen) * barLen;
+      const secs = Grid.sixToSec(nextBar - now, P.bpm);
+
+      NB.util.toast(`${scene.name} → bar ${Math.round(nextBar / barLen) + 1}`, '', 1600);
+      clearTimeout(this._pending);
+      this._pending = setTimeout(() => {
+        this.apply(scene);
+        /* the playhead continues from the same musical position */
+        NB.Transport.reanchor();
+      }, Math.max(30, secs * 1000));
+      return true;
+    },
+
+    cancelPending() {
+      clearTimeout(this._pending);
+      this._pending = 0;
+    },
+  };
+
+  NB.Scenes = Scenes;
 })(window.NB = window.NB || {});
 
 </script>
@@ -5352,6 +5506,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.wireKeyboard();
       this.wireSheet();
       this.wireMidiLearn();
+      this.wireScenes();
       this.wireInstall();
 
       this.buildVu();
@@ -5721,6 +5876,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           <span class="val" id="shSwingVal">${Math.round((P.swing || 0) * 100)}%</span></div>
         <div class="sheetRow"><label>Metronome</label><input type="checkbox" id="shMetro" ${P.metronome ? 'checked' : ''} style="width:22px;height:22px"></div>
         <div class="sheetBtns">
+          <button class="btn" id="shScenes">Scenes…</button>
           <button class="btn" id="shDemo">Templates…</button>
           <button class="btn" id="shSettings">Appearance</button>
           <button class="btn" id="shSave">Save project</button>
@@ -5740,6 +5896,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       $('#shSwing', s).addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
       $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
+      $('#shScenes', s).addEventListener('click', () => { this.closeSheet(); this.openScenes(); });
       $('#shSettings', s).addEventListener('click', () => { this.closeSheet(); this.openSettings(); });
       $('#shSave', s).addEventListener('click', () => { this.closeSheet(); this.saveProjectFile(); });
       $('#shOpen', s).addEventListener('click', () => { this.closeSheet(); this.openProjectFile(); });
@@ -5934,6 +6091,34 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       try { localStorage.setItem('nb-onboarded', '1'); } catch (e) {}
     },
 
+    openScenes() {
+      const list = NB.Scenes.list();
+      this.sheet(`
+        <h4>Scenes</h4>
+        <p style="font-size:11.5px;color:var(--ink-2);margin:0 0 8px">A scene is a snapshot of the whole arrangement. Launching while playing waits for the next bar.</p>
+        ${list.length ? list.map((sc) => `<button class="tplRow" data-scene="${sc.id}">
+            <span class="tplName">${escapeHtml(sc.name)}<b>${sc.bpm} BPM · ${sc.tracks.length} tracks</b></span>
+            <span class="tplBlurb">tap to launch · long-press to delete</span></button>`).join('')
+          : '<p style="font-size:12px;color:var(--ink-3)">No scenes yet.</p>'}
+        <div class="sheetBtns">
+          <button class="btn" id="scSave">Save current</button>
+          <button class="btn" id="scClose">Done</button>
+        </div>`, true);
+      const s = $('#sheet');
+      $$('[data-scene]', s).forEach((b) => b.addEventListener('click', () => {
+        this.closeSheet();
+        NB.Scenes.launch(b.dataset.scene);
+      }));
+      $('#scSave', s).addEventListener('click', () => {
+        const name = prompt('Scene name', `Scene ${list.length + 1}`);
+        if (name === null) return;
+        NB.Scenes.capture(name.trim().slice(0, 24) || `Scene ${list.length + 1}`);
+        this.closeSheet();
+        toast('Scene saved', 'ok', 1600);
+      });
+      $('#scClose', s).addEventListener('click', () => this.closeSheet());
+    },
+
     openTemplates() {
       const list = NB.Templates.list();
       this.sheet(`
@@ -5983,6 +6168,57 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         toast(`CC ${b.cc} → ${b.target}`, 'ok', 2200);
         this.announce(`Bound controller ${b.cc} to ${b.target}`);
       });
+    },
+
+    /* ---------- scenes ---------------------------------------------------- */
+    wireScenes() {
+      this.sceneBar = $('#sceneBar');
+      NB.bus.on('scenes', () => this.renderScenes());
+      NB.bus.on('project:replaced', () => this.renderScenes());
+      this.renderScenes();
+    },
+
+    renderScenes() {
+      const bar = this.sceneBar || $('#sceneBar');
+      if (!bar) return;
+      const list = NB.Scenes.list();
+      bar.innerHTML = '';
+      if (!list.length) {
+        const hint = el('span', { class: 'empty', text: 'Scenes: save the current arrangement to switch between sections live' });
+        bar.appendChild(hint);
+      }
+      list.forEach((sc) => {
+        const chip = el('button', { class: 'sceneChip', title: `${sc.name} — click to launch, alt-click to delete, double-click to rename` });
+        chip.innerHTML = `<span>${escapeHtml(sc.name)}</span><b>${sc.bpm}</b>`;
+        chip.addEventListener('click', (e) => {
+          if (e.altKey || e.metaKey) {
+            NB.Scenes.remove(sc.id);
+            toast('Scene deleted', '', 1400);
+            return;
+          }
+          NB.Scenes.launch(sc.id);
+          $$('.sceneChip', bar).forEach((c) => c.classList.remove('active'));
+          chip.classList.add('active');
+        });
+        chip.addEventListener('dblclick', () => {
+          const name = prompt('Scene name', sc.name);
+          if (name) NB.Scenes.rename(sc.id, name.trim().slice(0, 24));
+        });
+        let hold = 0;
+        chip.addEventListener('pointerdown', () => { hold = setTimeout(() => { NB.Scenes.remove(sc.id); toast('Scene deleted', '', 1400); }, 700); });
+        chip.addEventListener('pointerup', () => clearTimeout(hold));
+        chip.addEventListener('pointerleave', () => clearTimeout(hold));
+        bar.appendChild(chip);
+      });
+
+      const add = el('button', { class: 'sceneAdd', text: '+ Save scene' });
+      add.addEventListener('click', () => {
+        const name = prompt('Scene name', `Scene ${list.length + 1}`);
+        if (name === null) return;
+        NB.Scenes.capture(name.trim().slice(0, 24) || `Scene ${list.length + 1}`);
+        toast('Scene saved', 'ok', 1600);
+      });
+      bar.appendChild(add);
     },
 
     /* ---------- appearance ---------- */
@@ -6445,7 +6681,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '2.2.0',
+    version: '2.3.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

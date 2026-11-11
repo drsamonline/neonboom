@@ -76,6 +76,7 @@
     swing: 0,                       // 0-0.6, delays every second 16th
     tracks: [],
     metronome: false,
+    scenes: [],
     fx: null,                       // last FX rack values (restored on boot)
   };
 
@@ -299,6 +300,7 @@
           id: 'current', name: Project.name, bpm: Project.bpm, snap: Project.snap,
           loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
           metronome: Project.metronome, swing: Project.swing, fx: Project.fx || null,
+          scenes: Project.scenes || [],
           userSampleCount: Library.list().filter((x) => x.isUser).length,
           tracks: Project.tracks, savedAt: Date.now(),
         });
@@ -357,6 +359,7 @@
       Project.loopEnabled = !!proj.loopEnabled;
       Project.metronome = !!proj.metronome;
       Project.swing = proj.swing || 0;
+      Project.scenes = Array.isArray(proj.scenes) ? proj.scenes : [];
       Project.fx = proj.fx || null;
       Project.tracks = proj.tracks.map((t) => ({
         ...t,
@@ -492,6 +495,7 @@
       name: Project.name, bpm: Project.bpm, snap: Project.snap,
       loopIn: Project.loopIn, loopOut: Project.loopOut, loopEnabled: Project.loopEnabled,
       swing: Project.swing,
+      scenes: Project.scenes || [],
       tracks: Project.tracks.map((t) => ({
         name: t.name, color: t.color, vol: t.vol, pan: t.pan,
         sendA: t.sendA || 0, sendB: t.sendB || 0, mute: t.mute, solo: t.solo,

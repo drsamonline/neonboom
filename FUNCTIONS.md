@@ -87,6 +87,15 @@ track meters and the mixer meters. Replaced three `setInterval` timers. ✅
 | `Midi.applyCC(cc, value)` | Drives the mapped control through its own `input` handler | ✅ |
 | `Midi.loadMap/saveMap/clearMap` | Bindings in `localStorage` | ✅ |
 
+## 2g. Scenes — `src/core/scenes.js`
+
+| Function | What it does | Status |
+|---|---|---|
+| `Scenes.capture(name, id)` | Deep-clones the arrangement into a named snapshot | ✅ |
+| `Scenes.launch(id)` | Applies now when stopped, at the next bar when rolling | ✅ |
+| `Scenes.apply(scene)` | Swaps tracks/bpm/loop and re-anchors the transport | ✅ |
+| `Scenes.remove/rename/get` | Scene management | ✅ |
+
 ## 3. Synthesis — `src/audio/synth.js`
 
 27 generators, each rendering an `AudioBuffer` offline at 90 BPM and declaring its musical

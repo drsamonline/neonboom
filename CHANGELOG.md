@@ -5,6 +5,27 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.3.0] — 2026-11-11
+
+Scenes — save a section, switch to it live.
+
+### Added
+- **Scenes** (`src/core/scenes.js`): a named snapshot of the whole arrangement — tracks, clips,
+  mixer levels/pan/sends, automation, loop region and tempo. Save with **+ Save scene** in the
+  strip above the ruler, or from *More → Scenes* on a phone.
+- **Quantised launch**: while the transport is rolling, a launch waits for the **next bar** so the
+  change lands on a downbeat; the old scene keeps playing until then and the playhead continues
+  from the same musical position.
+- Alt-click (long-press on touch) deletes a scene, double-click renames it, and a launch is a
+  single undo step.
+
+### Why it is a snapshot and not a session grid
+Ableton's session view needs a second clip store. NEONBOOM is an arrangement, so a scene is the
+same objects the project already holds, deep-cloned — a few KB of JSON. Save/open, autosave, undo
+and the whole scheduler work unchanged. The design note is in `ENHANCEMENTS.md` §8b.
+
+---
+
 ## [2.2.0] — 2026-11-11
 
 Hardening: keyboard navigation, a layout-regression gate, and an installability audit.

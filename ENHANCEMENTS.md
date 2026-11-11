@@ -99,8 +99,8 @@ Ranked by "how much does this change what you can make", not by how fun it is to
 | 34 | **Time-stretch quality switch** (playbackRate vs. simple WSOLA) | L | med | playbackRate changes pitch; WSOLA keeps it |
 
 Everything in the "cheap" column is now done except **#36** (roving-tabindex keyboard nav).
-What is left: **#34 WSOLA time-stretch** and **#28 scene launcher** (both large), plus code
-signing (#46/#47), a docs site (#52) and i18n (#51).
+What is left: **#34 WSOLA time-stretch** (large), plus code signing (#46/#47), a docs site
+(#52) and i18n (#51). The musical surface is complete.
 
 ---
 
@@ -162,6 +162,50 @@ These come up often. They are listed so the decision is visible rather than re-l
 | Bundling samples **into** the app file | Would kill the 190 KB single file — but an *optional side pack* does not, see §8 |
 
 ---
+
+## 8b. Scene launcher — design
+
+Ableton's session view is a different data model (slots, not a timeline). NEONBOOM is an
+arrangement, so a faithful clone would mean maintaining two clip stores. This is the version that
+fits the model it already has.
+
+### What a scene is
+
+A **named snapshot of the arrangement**: tracks and their clips, mixer levels/pan/sends,
+automation envelopes, loop region and tempo. Nothing else — no second copy of the loop library,
+no parallel clip store. Because clips reference stable sample ids, a snapshot is a few KB of JSON.
+
+### What launching does
+
+| State | Behaviour |
+|---|---|
+| Stopped | Load the snapshot immediately |
+| Playing | Load at the **next bar**, so the change lands on a downbeat: the old scene keeps playing until the boundary, then the scheduler rebuilds from the same musical position |
+| Undo | A launch is one history step, so `Ctrl+Z` returns to the previous scene |
+
+### Why this shape
+
+- **No new model.** A scene is `{tracks, bpm, loopIn, loopOut}` — the same objects the project
+  already holds, deep-cloned. Save/open, autosave and undo all work unchanged.
+- **Quantised, not instant.** Swapping clips mid-beat is the thing that makes a launcher feel
+  broken. The scheduler already queues 180 ms ahead, so the swap happens at the boundary without
+  cutting audio.
+- **Small.** 8 tracks × 8 clips ≈ 4 KB per scene. Twenty scenes is less than one loop.
+
+### UI
+
+A scene strip between the arrange toolbar and the ruler: `[+ Save]` plus one chip per scene.
+Click launches, alt-click (long-press on touch) deletes, double-click renames. On phones the same
+list opens as a bottom sheet from the Arrange tab.
+
+### Work
+
+| # | Task | Effort |
+|---|---|---|
+| 60 | ~~`src/core/scenes.js`~~ — **shipped in 2.3.0** | — |
+| 61 | ~~Scene strip + mobile sheet~~ — **shipped in 2.3.0** | — |
+| 62 | ~~Persist scenes~~ — **shipped in 2.3.0** | — |
+| 63 | ~~Tests~~ — **shipped in 2.3.0** (10 assertions) | — |
 
 ## 8. Optional sample pack — design
 

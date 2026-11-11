@@ -510,6 +510,66 @@ console.log('\n18 · keyboard navigation');
   await page.close(); await page.__ctx.close();
 }
 
+/* ------------------------------------------------------------- 19. scenes */
+console.log('\n19 · scene launcher');
+{
+  await restart();
+  const { page, errors } = await open(APP);
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), o = {};
+    const count = () => NB.Project.tracks.reduce((n, t) => n + t.clips.length, 0);
+
+    const A = NB.Scenes.capture('Full');
+    o.aClips = count();
+    NB.Project.tracks[0].clips = [];
+    NB.Project.tracks[1].clips = [];
+    const B = NB.Scenes.capture('Break');
+    o.bClips = count();
+
+    NB.Scenes.launch(A.id); o.afterA = count();
+    NB.Scenes.launch(B.id); o.afterB = count();
+    o.chips = document.querySelectorAll('.sceneChip').length;
+
+    /* quantised: while rolling, the switch waits for the bar */
+    NB.Scenes.launch(A.id); await sleep(60);
+    o.stillB = count() === o.bClips;
+    NB.Transport.seekTo(0);
+    NB.Transport.play(); await sleep(200);
+    const before = count();
+    NB.Scenes.launch(B.id);
+    await sleep(120);
+    o.notYet = count() === before;
+    await sleep(2600);
+    o.landed = count() === o.bClips;
+    o.playing = NB.Transport.playing;
+    NB.Transport.pause();
+
+    /* undo a launch */
+    NB.Scenes.launch(A.id);
+    const after = count();
+    NB.History.undo();
+    o.undoChanged = count() !== after;
+
+    NB.Scenes.rename(B.id, 'Break');
+    o.renamed = NB.Scenes.get(B.id).name;
+    o.removed = NB.Scenes.remove(B.id) && NB.Scenes.list().length === 1;
+    o.persisted = Array.isArray(NB.Project.scenes) && NB.Project.scenes.length === 1;
+    return o;
+  });
+  check('a scene captures the arrangement', o.aClips > 20 && o.bClips < o.aClips, { a: o.aClips, b: o.bClips });
+  check('launching while stopped applies at once', o.afterA === o.aClips && o.afterB === o.bClips);
+  check('the strip renders one chip per scene', o.chips === 2, o.chips);
+  check('a quantised launch does not cut mid-bar', o.notYet);
+  check('it lands on the next bar', o.landed);
+  check('transport keeps rolling through the switch', o.playing);
+  check('a launch is one undo step', o.undoChanged);
+  check('scenes rename and delete', o.renamed === 'Break' && o.removed);
+  check('scenes live on the project', o.persisted);
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await page.__ctx.close();
+}
+
 /* ---------------------------------------------------------- 11. standalone */
 console.log('\n11 · standalone builds (readable + minified)');
 {

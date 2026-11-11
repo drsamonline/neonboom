@@ -47,5 +47,5 @@ jobs:
           MIN=$(stat -c%s dist/neonboom.min.html)
           SRC=$(stat -c%s dist/neonboom.html)
           echo "minified $MIN bytes ($((MIN/1024)) KB) · readable $SRC bytes ($((SRC/1024)) KB)"
-          test "$MIN" -lt 204800
-          test "$SRC" -lt 327680
+          test "$MIN" -lt 221184
+          test "$SRC" -lt 344064

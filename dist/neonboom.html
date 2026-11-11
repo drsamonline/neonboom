@@ -1696,11 +1696,23 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       }
     }
 
+    /* ramp one send from automation; `kind` is 'sendA' (delay) or 'sendB' (reverb) */
+    setSendAutomation(i, kind, value, atTime, until) {
+      const b = this.tracks[i];
+      if (!b || !b[kind]) return;
+      const p = b[kind].gain;
+      const t = atTime == null ? this.ctx.currentTime : atTime;
+      p.cancelScheduledValues(t);
+      p.setValueAtTime(Math.max(0, value), t);
+      if (until != null) p.linearRampToValueAtTime(Math.max(0, value), until);
+    }
+
     setTrackSends(i, a, b2) {
       const b = this.tracks[i]; if (!b) return;
       if (b.sendA) b.sendA.gain.setTargetAtTime(clamp(a || 0, 0, 1), this.ctx.currentTime, 0.01);
       if (b.sendB) b.sendB.gain.setTargetAtTime(clamp(b2 || 0, 0, 1), this.ctx.currentTime, 0.01);
     }
+
     /* Mute/solo is applied as a real gain change, so it is audible instantly
        on already-playing sources — not just the next scheduling pass. */
     applyMix(tracks) {
@@ -1762,12 +1774,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
     /* metronome click scheduled on the audio clock */
     click(when, accent) {
+      const level = this.metronomeLevel == null ? 0.6 : this.metronomeLevel;
       const ctx = this.ctx;
       const osc = ctx.createOscillator(); osc.type = 'square';
       const g = ctx.createGain();
       osc.frequency.value = accent ? 1760 : 1180;
       g.gain.setValueAtTime(0.0001, when);
-      g.gain.exponentialRampToValueAtTime(accent ? 0.28 : 0.16, when + 0.002);
+      g.gain.exponentialRampToValueAtTime((accent ? 0.28 : 0.16) * level, when + 0.002);
       g.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 600;
       osc.connect(hp); hp.connect(g); g.connect(this.master.input);
@@ -2259,6 +2272,17 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           bus.auto.gain.linearRampToValueAtTime(Math.max(0.0001, p.v), Math.max(0.001, at));
         });
       }
+      ['sendA', 'sendB'].forEach((kind) => {
+        const pts = (t.automation && t.automation[kind]) || [];
+        const node = bus[kind] && bus[kind].gain;
+        if (!pts.length || !node) return;
+        const all = [{ six: startSix, v: pts[0].v }, ...pts, { six: endSix, v: pts[pts.length - 1].v }];
+        all.forEach((p) => {
+          const at = Grid.sixToSec(Math.max(0, p.six - startSix), bpm);
+          node.linearRampToValueAtTime(Math.max(0, p.v), Math.max(0.001, at));
+        });
+      });
+
       const panPts = (t.automation && t.automation.pan) || [];
       if (panPts.length && bus.panner) {
         const pts = [{ six: startSix, v: panPts[0].v }, ...panPts, { six: endSix, v: panPts[panPts.length - 1].v }];
@@ -2463,7 +2487,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       id: uid('trk'), name: `Track ${i + 1}`,
       color: NB.util.paletteColor(i),
       vol: 0.85, pan: 0, sendA: 0, sendB: 0, mute: false, solo: false, clips: [],
-      automation: { level: [], pan: [] },     // [{six, v}] breakpoints, sorted
+      automation: { level: [], pan: [], sendA: [], sendB: [] },  // [{six, v}], sorted
       autoMode: null,                          // 'level' | 'pan' | null (lane shown)
     };
   }
@@ -2525,7 +2549,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
      A breakpoint envelope per track. Values are multipliers: `level` scales
      the track (0 = silent, 1 = as the fader says), `pan` overrides the pan
      knob. With no points the envelope is flat and the knobs win. */
-  const AUTOMATION_RANGE = { level: [0, 1], pan: [-1, 1] };
+  const AUTOMATION_RANGE = { level: [0, 1], pan: [-1, 1], sendA: [0, 1], sendB: [0, 1] };
 
   function autoValueAt(track, kind, six) {
     const pts = (track.automation && track.automation[kind]) || [];
@@ -2545,7 +2569,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
   function autoPoint(track, kind, six, v) {
     const [min, max] = AUTOMATION_RANGE[kind];
-    if (!track.automation) track.automation = { level: [], pan: [] };
+    if (!track.automation) track.automation = { level: [], pan: [], sendA: [], sendB: [] };
     const pts = track.automation[kind] || (track.automation[kind] = []);
     const value = clamp(v, min, max);
     const at = Math.max(0, Math.round(six));
@@ -2910,7 +2934,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       tracks: Project.tracks.map((t) => ({
         name: t.name, color: t.color, vol: t.vol, pan: t.pan,
         sendA: t.sendA || 0, sendB: t.sendB || 0, mute: t.mute, solo: t.solo,
-        automation: t.automation || { level: [], pan: [] },
+        automation: t.automation || { level: [], pan: [], sendA: [], sendB: [] },
         clips: t.clips.map((c) => ({
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
           startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
@@ -2938,7 +2962,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       track.pan = t.pan || 0;
       track.sendA = t.sendA || 0; track.sendB = t.sendB || 0;
       track.mute = !!t.mute; track.solo = !!t.solo;
-      track.automation = { level: [], pan: [], ...(t.automation || {}) };
+      track.automation = { level: [], pan: [], sendA: [], sendB: [], ...(t.automation || {}) };
       track.clips = (t.clips || []).map((c) => {
         const s = Library.byName(c.sampleName);
         if (!s) return null;
@@ -3836,6 +3860,21 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
             bus.panner.pan.linearRampToValueAtTime(panTo == null ? panFrom : panTo, horizonCtx);
           }
         }
+
+        /* send automation */
+        ['sendA', 'sendB'].forEach((kind) => {
+          const node = bus[kind] && bus[kind].gain;
+          if (!node) return;
+          const from = NB.project.autoValueAt(track, kind, fromSix);
+          const to = NB.project.autoValueAt(track, kind, toSix);
+          if (from == null) {
+            if (node._autoActive) { node.cancelScheduledValues(fromCtx); node._autoActive = false; }
+          } else {
+            node._autoActive = true;
+            node.setValueAtTime(Math.max(0, from), fromCtx);
+            node.linearRampToValueAtTime(Math.max(0, to == null ? from : to), horizonCtx);
+          }
+        });
       });
     },
 
@@ -3976,6 +4015,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       }, { passive: false });
 
       this._wireCanvas();
+      this._wirePinch();
       this._wireRuler();
 
       new ResizeObserver(() => this.resize()).observe(this.viewport);
@@ -4035,6 +4075,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         row.style.height = this.trackH() + 'px';
         row.innerHTML = `
           <div class="thRow">
+            <button class="tgrip" data-act="grip" title="Drag to reorder this track" aria-label="Reorder track">⠿</button>
             <div class="tag" style="background:${t.color}"></div>
             <input class="tname" value="${t.name.replace(/"/g, '&quot;')}" data-act="name" aria-label="Track name">
             <span class="num">${String(i + 1).padStart(2, '0')}</span>
@@ -4042,7 +4083,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           <div class="thRow">
             <button class="tbtn m ${t.mute ? 'on' : ''}" data-act="mute" title="Mute">M</button>
             <button class="tbtn s ${t.solo ? 'on' : ''}" data-act="solo" title="Solo">S</button>
-            <button class="tbtn a ${t.autoMode ? 'on' : ''}" data-act="auto" title="Automation lane (level → pan → off)">A</button>
+            <button class="tbtn a ${t.autoMode ? 'on' : ''}" data-act="auto" title="Automation lane: level → pan → delay send → reverb send → off">A</button>
             <div class="meter"><i data-meter="${i}"></i></div>
           </div>
           <div class="thRow">
@@ -4076,8 +4117,9 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         if (btn) {
           if (btn.dataset.act === 'mute') t.mute = !t.mute;
           if (btn.dataset.act === 'solo') t.solo = !t.solo;
+          if (btn.dataset.act === 'grip') { this._startReorder(e, i); return; }
           if (btn.dataset.act === 'auto') {
-            const cycle = [null, 'level', 'pan'];
+            const cycle = [null, 'level', 'pan', 'sendA', 'sendB'];
             t.autoMode = cycle[(cycle.indexOf(t.autoMode || null) + 1) % cycle.length];
             this.rebuildHeaders(); this.draw();
             if (t.autoMode) NB.util.toast(`${t.name}: ${t.autoMode} automation — click the lane to add points, alt-click to remove`, '', 2600);
@@ -4394,7 +4436,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
       /* the curve, sampled every 4 px so a ramp looks like a ramp */
       ctx.beginPath();
-      ctx.strokeStyle = kind === 'pan' ? '#5b8def' : '#ffb020';
+      ctx.strokeStyle = { level: '#ffb020', pan: '#5b8def', sendA: '#ef5b5b', sendB: '#a56bff' }[kind] || '#ffb020';
       ctx.lineWidth = 1.6;
       const step = 4 / px;
       for (let six = firstSix; six <= lastSix; six += step) {
@@ -4411,14 +4453,16 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         ctx.arc(x, y, 3.6, 0, Math.PI * 2);
         ctx.fillStyle = '#0b0d10';
         ctx.fill();
-        ctx.strokeStyle = kind === 'pan' ? '#5b8def' : '#ffb020';
+        ctx.strokeStyle = { level: '#ffb020', pan: '#5b8def', sendA: '#ef5b5b', sendB: '#a56bff' }[kind] || '#ffb020';
         ctx.lineWidth = 2;
         ctx.stroke();
       });
 
+      const LABEL = { level: 'LEVEL', pan: 'PAN', sendA: 'DELAY SEND', sendB: 'REVERB SEND' };
+      const COLOUR = { level: '255,176,32', pan: '91,141,239', sendA: '239,91,91', sendB: '165,107,255' };
       ctx.font = '700 8px ui-monospace,Menlo,monospace';
-      ctx.fillStyle = kind === 'pan' ? 'rgba(91,141,239,.9)' : 'rgba(255,176,32,.9)';
-      ctx.fillText(kind === 'pan' ? 'PAN' : 'LEVEL', firstSix * px + 6, top + 9);
+      ctx.fillStyle = `rgba(${COLOUR[kind] || COLOUR.level},.9)`;
+      ctx.fillText(LABEL[kind] || kind.toUpperCase(), firstSix * px + 6, top + 9);
     },
 
     /* click to add, drag to move, alt-click to remove */
@@ -4464,6 +4508,34 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.canvas.addEventListener('pointermove', move);
       this.canvas.addEventListener('pointerup', up, { once: true });
       this.draw();
+    },
+
+    /* Two fingers on the ruler zoom, keeping the point under the fingers still.
+       The ruler has no scroll gesture of its own, so this cannot fight panning. */
+    _wirePinch() {
+      const r = this.ruler;
+      if (!r) return;
+      r.style.touchAction = 'none';
+      let startDist = 0, startZoom = 1, focal = 0;
+      const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      const sixAt = (clientX) => {
+        const rect = r.getBoundingClientRect();
+        return (clientX - rect.left + this.viewport.scrollLeft) / this.pxPerSix();
+      };
+      r.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 2) return;
+        e.preventDefault();
+        startDist = dist(e.touches);
+        startZoom = this.zoom;
+        focal = sixAt((e.touches[0].clientX + e.touches[1].clientX) / 2);
+      }, { passive: false });
+      r.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 2 || !startDist) return;
+        e.preventDefault();
+        const ratio = dist(e.touches) / startDist;
+        this.setZoom(startZoom * ratio, focal);
+      }, { passive: false });
+      r.addEventListener('touchend', () => { startDist = 0; }, { passive: true });
     },
 
     drawRuler() {
@@ -4516,6 +4588,34 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         }
       }
       return { clip: null, track, trackIdx: idx };
+    },
+
+    /* Drag a track header's grip to move the whole track, clips included. */
+    _startReorder(e, from) {
+      e.preventDefault();
+      const th = this.trackH();
+      const top = this.canvas.getBoundingClientRect().top;
+      let current = from;
+      const move = (ev) => {
+        const to = Math.max(0, Math.min(this.tracks.length - 1, Math.floor((ev.clientY - top) / th)));
+        if (to === current) return;
+        const [t] = this.tracks.splice(current, 1);
+        this.tracks.splice(to, 0, t);
+        current = to;
+        this.rebuildHeaders();
+        this.draw();
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        if (current !== from) {
+          NB.History.push('Reorder tracks');
+          NB.Persistence.saveSoon();
+          toast(`Track moved to ${current + 1}`, '', 1400);
+        }
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
     },
 
     /* Rubber-band selection on an empty lane. Only engages once the pointer
@@ -4831,6 +4931,33 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.follow = !!on;
       NB.bus.emit('follow', this.follow);
       NB.Persistence.saveSoon();
+    },
+
+    copyAutomation() {
+      const track = this.tracks.find((t) => t.id === this.selectedTrackId);
+      if (!track || !track.autoMode) { toast('Turn on an automation lane first', 'warn'); return false; }
+      const pts = (track.automation && track.automation[track.autoMode]) || [];
+      if (!pts.length) { toast('That lane is empty', 'warn'); return false; }
+      this.autoClipboard = { kind: track.autoMode, points: JSON.parse(JSON.stringify(pts)) };
+      toast(`Copied ${pts.length} ${track.autoMode} points`, '', 1600);
+      return true;
+    },
+
+    pasteAutomation() {
+      const track = this.tracks.find((t) => t.id === this.selectedTrackId);
+      if (!this.autoClipboard) { toast('Nothing to paste', 'warn'); return false; }
+      if (!track) return false;
+      NB.History.push('Paste automation');
+      const { kind, points } = this.autoClipboard;
+      track.automation = track.automation || {};
+      track.automation[kind] = JSON.parse(JSON.stringify(points));
+      track.autoMode = kind;
+      this.rebuildHeaders();
+      NB.Transport.reanchor();
+      NB.Persistence.saveSoon();
+      this.draw();
+      toast(`${points.length} points → ${track.name} (${kind})`, 'ok', 2000);
+      return true;
     },
 
     /* ---- clipboard ---------------------------------------------------- */
@@ -5985,6 +6112,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
           <input type="number" id="tsBpm" value="${P.bpm}" min="40" max="220" style="width:74px;text-align:center">
           <button class="btn" id="tsUp" style="min-width:44px">+</button>
           <span style="font-size:11px;color:var(--ink-2)">BPM</span></div>
+        <div class="sheetRow"><label>Tempo</label>
+          <button class="btn" id="tsTap">Tap</button>
+          <span style="font-size:11px;color:var(--ink-2);flex:1">tap four times</span></div>
+        <div class="sheetRow"><label>Click level</label>
+          <input type="range" id="tsMetro" min="0" max="1" step="0.05" value="${NB.Engine.metronomeLevel == null ? 0.6 : NB.Engine.metronomeLevel}">
+          <span class="val" id="tsMetroVal">${Math.round((NB.Engine.metronomeLevel == null ? 0.6 : NB.Engine.metronomeLevel) * 100)}%</span></div>
         <div class="sheetRow"><label>Snap</label>
           <select id="tsSnap" style="flex:1">
             <option value="4"${P.snap === 4 ? ' selected' : ''}>1/4 bar</option>
@@ -6203,6 +6336,12 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       this.sheet(`
         <h4>Project</h4>
         <div class="sheetRow"><label>Name</label><input type="text" id="shName" value="${escapeAttr(P.name)}" style="flex:1"></div>
+        <div class="sheetRow"><label>Tempo</label>
+          <button class="btn" id="tsTap">Tap</button>
+          <span style="font-size:11px;color:var(--ink-2);flex:1">tap four times</span></div>
+        <div class="sheetRow"><label>Click level</label>
+          <input type="range" id="tsMetro" min="0" max="1" step="0.05" value="${NB.Engine.metronomeLevel == null ? 0.6 : NB.Engine.metronomeLevel}">
+          <span class="val" id="tsMetroVal">${Math.round((NB.Engine.metronomeLevel == null ? 0.6 : NB.Engine.metronomeLevel) * 100)}%</span></div>
         <div class="sheetRow"><label>Snap</label>
           <select id="shSnap" style="flex:1">
             <option value="4"${P.snap === 4 ? ' selected' : ''}>1/4 bar</option>
@@ -6232,6 +6371,14 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         $('#shSwingVal', s).textContent = Math.round(P.swing * 100) + '%';
       });
       $('#shSwing', s).addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
+      $('#tsTap', s).addEventListener('click', () => {
+        const bpm = this.tapTempo();
+        if (bpm) { $('#tsBpm', s).value = bpm; toast(`${bpm} BPM`, 'ok', 1200); }
+      });
+      $('#tsMetro', s).addEventListener('input', (e) => {
+        NB.Engine.metronomeLevel = parseFloat(e.target.value);
+        $('#tsMetroVal', s).textContent = Math.round(NB.Engine.metronomeLevel * 100) + '%';
+      });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
       $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
       $('#shScenes', s).addEventListener('click', () => { this.closeSheet(); this.openScenes(); });
@@ -6514,6 +6661,26 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         toast(`CC ${b.cc} → ${b.target}`, 'ok', 2200);
         this.announce(`Bound controller ${b.cc} to ${b.target}`);
       });
+    },
+
+    /* ---------- tap tempo ------------------------------------------------ */
+    tapTempo() {
+      const now = performance.now();
+      if (!this._taps) this._taps = [];
+      if (this._taps.length && now - this._taps[this._taps.length - 1] > 2200) this._taps = [];
+      this._taps.push(now);
+      if (this._taps.length > 6) this._taps.shift();
+      if (this._taps.length < 2) { toast('Tap again…', '', 900); return null; }
+
+      const gaps = [];
+      for (let i = 1; i < this._taps.length; i++) gaps.push(this._taps[i] - this._taps[i - 1]);
+      const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      const bpm = clamp(Math.round(60000 / avg), 40, 220);
+      NB.Transport.setBpm(bpm);
+      this.bpmInput.value = bpm;
+      this.syncLcdSub();
+      NB.Persistence.saveSoon();
+      return bpm;
     },
 
     /* ---------- busy overlay (export can take 20 s) ------------------------ */
@@ -6973,6 +7140,9 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
         if (mod && e.code === 'KeyC') { e.preventDefault(); NB.Timeline.copySelected(); return; }
         if (mod && e.code === 'KeyX') { e.preventDefault(); NB.Timeline.cutSelected(); return; }
         if (mod && e.code === 'KeyV') { e.preventDefault(); NB.Timeline.paste(); return; }
+        if (!mod && !e.shiftKey && e.code === 'KeyT') { e.preventDefault(); const b = this.tapTempo(); if (b) toast(`${b} BPM`, 'ok', 1000); return; }
+        if (mod && e.shiftKey && e.code === 'KeyC') { e.preventDefault(); NB.Timeline.copyAutomation(); return; }
+        if (mod && e.shiftKey && e.code === 'KeyV') { e.preventDefault(); NB.Timeline.pasteAutomation(); return; }
         /* shift+1..8 launches a scene — 1..0/QW are pad auditions */
         if (e.shiftKey && !mod && /^Digit[1-8]$/.test(e.code)) {
           const list = NB.Scenes.list();
@@ -7086,7 +7256,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '2.5.0',
+    version: '2.6.0',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

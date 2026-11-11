@@ -107,6 +107,17 @@
           bus.auto.gain.linearRampToValueAtTime(Math.max(0.0001, p.v), Math.max(0.001, at));
         });
       }
+      ['sendA', 'sendB'].forEach((kind) => {
+        const pts = (t.automation && t.automation[kind]) || [];
+        const node = bus[kind] && bus[kind].gain;
+        if (!pts.length || !node) return;
+        const all = [{ six: startSix, v: pts[0].v }, ...pts, { six: endSix, v: pts[pts.length - 1].v }];
+        all.forEach((p) => {
+          const at = Grid.sixToSec(Math.max(0, p.six - startSix), bpm);
+          node.linearRampToValueAtTime(Math.max(0, p.v), Math.max(0.001, at));
+        });
+      });
+
       const panPts = (t.automation && t.automation.pan) || [];
       if (panPts.length && bus.panner) {
         const pts = [{ six: startSix, v: panPts[0].v }, ...panPts, { six: endSix, v: panPts[panPts.length - 1].v }];

@@ -69,6 +69,7 @@
       }, { passive: false });
 
       this._wireCanvas();
+      this._wirePinch();
       this._wireRuler();
 
       new ResizeObserver(() => this.resize()).observe(this.viewport);
@@ -128,6 +129,7 @@
         row.style.height = this.trackH() + 'px';
         row.innerHTML = `
           <div class="thRow">
+            <button class="tgrip" data-act="grip" title="Drag to reorder this track" aria-label="Reorder track">⠿</button>
             <div class="tag" style="background:${t.color}"></div>
             <input class="tname" value="${t.name.replace(/"/g, '&quot;')}" data-act="name" aria-label="Track name">
             <span class="num">${String(i + 1).padStart(2, '0')}</span>
@@ -135,7 +137,7 @@
           <div class="thRow">
             <button class="tbtn m ${t.mute ? 'on' : ''}" data-act="mute" title="Mute">M</button>
             <button class="tbtn s ${t.solo ? 'on' : ''}" data-act="solo" title="Solo">S</button>
-            <button class="tbtn a ${t.autoMode ? 'on' : ''}" data-act="auto" title="Automation lane (level → pan → off)">A</button>
+            <button class="tbtn a ${t.autoMode ? 'on' : ''}" data-act="auto" title="Automation lane: level → pan → delay send → reverb send → off">A</button>
             <div class="meter"><i data-meter="${i}"></i></div>
           </div>
           <div class="thRow">
@@ -169,8 +171,9 @@
         if (btn) {
           if (btn.dataset.act === 'mute') t.mute = !t.mute;
           if (btn.dataset.act === 'solo') t.solo = !t.solo;
+          if (btn.dataset.act === 'grip') { this._startReorder(e, i); return; }
           if (btn.dataset.act === 'auto') {
-            const cycle = [null, 'level', 'pan'];
+            const cycle = [null, 'level', 'pan', 'sendA', 'sendB'];
             t.autoMode = cycle[(cycle.indexOf(t.autoMode || null) + 1) % cycle.length];
             this.rebuildHeaders(); this.draw();
             if (t.autoMode) NB.util.toast(`${t.name}: ${t.autoMode} automation — click the lane to add points, alt-click to remove`, '', 2600);
@@ -487,7 +490,7 @@
 
       /* the curve, sampled every 4 px so a ramp looks like a ramp */
       ctx.beginPath();
-      ctx.strokeStyle = kind === 'pan' ? '#5b8def' : '#ffb020';
+      ctx.strokeStyle = { level: '#ffb020', pan: '#5b8def', sendA: '#ef5b5b', sendB: '#a56bff' }[kind] || '#ffb020';
       ctx.lineWidth = 1.6;
       const step = 4 / px;
       for (let six = firstSix; six <= lastSix; six += step) {
@@ -504,14 +507,16 @@
         ctx.arc(x, y, 3.6, 0, Math.PI * 2);
         ctx.fillStyle = '#0b0d10';
         ctx.fill();
-        ctx.strokeStyle = kind === 'pan' ? '#5b8def' : '#ffb020';
+        ctx.strokeStyle = { level: '#ffb020', pan: '#5b8def', sendA: '#ef5b5b', sendB: '#a56bff' }[kind] || '#ffb020';
         ctx.lineWidth = 2;
         ctx.stroke();
       });
 
+      const LABEL = { level: 'LEVEL', pan: 'PAN', sendA: 'DELAY SEND', sendB: 'REVERB SEND' };
+      const COLOUR = { level: '255,176,32', pan: '91,141,239', sendA: '239,91,91', sendB: '165,107,255' };
       ctx.font = '700 8px ui-monospace,Menlo,monospace';
-      ctx.fillStyle = kind === 'pan' ? 'rgba(91,141,239,.9)' : 'rgba(255,176,32,.9)';
-      ctx.fillText(kind === 'pan' ? 'PAN' : 'LEVEL', firstSix * px + 6, top + 9);
+      ctx.fillStyle = `rgba(${COLOUR[kind] || COLOUR.level},.9)`;
+      ctx.fillText(LABEL[kind] || kind.toUpperCase(), firstSix * px + 6, top + 9);
     },
 
     /* click to add, drag to move, alt-click to remove */
@@ -557,6 +562,34 @@
       this.canvas.addEventListener('pointermove', move);
       this.canvas.addEventListener('pointerup', up, { once: true });
       this.draw();
+    },
+
+    /* Two fingers on the ruler zoom, keeping the point under the fingers still.
+       The ruler has no scroll gesture of its own, so this cannot fight panning. */
+    _wirePinch() {
+      const r = this.ruler;
+      if (!r) return;
+      r.style.touchAction = 'none';
+      let startDist = 0, startZoom = 1, focal = 0;
+      const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      const sixAt = (clientX) => {
+        const rect = r.getBoundingClientRect();
+        return (clientX - rect.left + this.viewport.scrollLeft) / this.pxPerSix();
+      };
+      r.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 2) return;
+        e.preventDefault();
+        startDist = dist(e.touches);
+        startZoom = this.zoom;
+        focal = sixAt((e.touches[0].clientX + e.touches[1].clientX) / 2);
+      }, { passive: false });
+      r.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 2 || !startDist) return;
+        e.preventDefault();
+        const ratio = dist(e.touches) / startDist;
+        this.setZoom(startZoom * ratio, focal);
+      }, { passive: false });
+      r.addEventListener('touchend', () => { startDist = 0; }, { passive: true });
     },
 
     drawRuler() {
@@ -609,6 +642,34 @@
         }
       }
       return { clip: null, track, trackIdx: idx };
+    },
+
+    /* Drag a track header's grip to move the whole track, clips included. */
+    _startReorder(e, from) {
+      e.preventDefault();
+      const th = this.trackH();
+      const top = this.canvas.getBoundingClientRect().top;
+      let current = from;
+      const move = (ev) => {
+        const to = Math.max(0, Math.min(this.tracks.length - 1, Math.floor((ev.clientY - top) / th)));
+        if (to === current) return;
+        const [t] = this.tracks.splice(current, 1);
+        this.tracks.splice(to, 0, t);
+        current = to;
+        this.rebuildHeaders();
+        this.draw();
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        if (current !== from) {
+          NB.History.push('Reorder tracks');
+          NB.Persistence.saveSoon();
+          toast(`Track moved to ${current + 1}`, '', 1400);
+        }
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
     },
 
     /* Rubber-band selection on an empty lane. Only engages once the pointer
@@ -924,6 +985,33 @@
       this.follow = !!on;
       NB.bus.emit('follow', this.follow);
       NB.Persistence.saveSoon();
+    },
+
+    copyAutomation() {
+      const track = this.tracks.find((t) => t.id === this.selectedTrackId);
+      if (!track || !track.autoMode) { toast('Turn on an automation lane first', 'warn'); return false; }
+      const pts = (track.automation && track.automation[track.autoMode]) || [];
+      if (!pts.length) { toast('That lane is empty', 'warn'); return false; }
+      this.autoClipboard = { kind: track.autoMode, points: JSON.parse(JSON.stringify(pts)) };
+      toast(`Copied ${pts.length} ${track.autoMode} points`, '', 1600);
+      return true;
+    },
+
+    pasteAutomation() {
+      const track = this.tracks.find((t) => t.id === this.selectedTrackId);
+      if (!this.autoClipboard) { toast('Nothing to paste', 'warn'); return false; }
+      if (!track) return false;
+      NB.History.push('Paste automation');
+      const { kind, points } = this.autoClipboard;
+      track.automation = track.automation || {};
+      track.automation[kind] = JSON.parse(JSON.stringify(points));
+      track.autoMode = kind;
+      this.rebuildHeaders();
+      NB.Transport.reanchor();
+      NB.Persistence.saveSoon();
+      this.draw();
+      toast(`${points.length} points → ${track.name} (${kind})`, 'ok', 2000);
+      return true;
     },
 
     /* ---- clipboard ---------------------------------------------------- */

@@ -63,7 +63,7 @@
       id: uid('trk'), name: `Track ${i + 1}`,
       color: NB.util.paletteColor(i),
       vol: 0.85, pan: 0, sendA: 0, sendB: 0, mute: false, solo: false, clips: [],
-      automation: { level: [], pan: [] },     // [{six, v}] breakpoints, sorted
+      automation: { level: [], pan: [], sendA: [], sendB: [] },  // [{six, v}], sorted
       autoMode: null,                          // 'level' | 'pan' | null (lane shown)
     };
   }
@@ -125,7 +125,7 @@
      A breakpoint envelope per track. Values are multipliers: `level` scales
      the track (0 = silent, 1 = as the fader says), `pan` overrides the pan
      knob. With no points the envelope is flat and the knobs win. */
-  const AUTOMATION_RANGE = { level: [0, 1], pan: [-1, 1] };
+  const AUTOMATION_RANGE = { level: [0, 1], pan: [-1, 1], sendA: [0, 1], sendB: [0, 1] };
 
   function autoValueAt(track, kind, six) {
     const pts = (track.automation && track.automation[kind]) || [];
@@ -145,7 +145,7 @@
 
   function autoPoint(track, kind, six, v) {
     const [min, max] = AUTOMATION_RANGE[kind];
-    if (!track.automation) track.automation = { level: [], pan: [] };
+    if (!track.automation) track.automation = { level: [], pan: [], sendA: [], sendB: [] };
     const pts = track.automation[kind] || (track.automation[kind] = []);
     const value = clamp(v, min, max);
     const at = Math.max(0, Math.round(six));
@@ -510,7 +510,7 @@
       tracks: Project.tracks.map((t) => ({
         name: t.name, color: t.color, vol: t.vol, pan: t.pan,
         sendA: t.sendA || 0, sendB: t.sendB || 0, mute: t.mute, solo: t.solo,
-        automation: t.automation || { level: [], pan: [] },
+        automation: t.automation || { level: [], pan: [], sendA: [], sendB: [] },
         clips: t.clips.map((c) => ({
           sampleName: (Library.get(c.sampleId) || {}).name || 'missing',
           startSix: c.startSix, trimStartSix: c.trimStartSix, trimEndSix: c.trimEndSix,
@@ -538,7 +538,7 @@
       track.pan = t.pan || 0;
       track.sendA = t.sendA || 0; track.sendB = t.sendB || 0;
       track.mute = !!t.mute; track.solo = !!t.solo;
-      track.automation = { level: [], pan: [], ...(t.automation || {}) };
+      track.automation = { level: [], pan: [], sendA: [], sendB: [], ...(t.automation || {}) };
       track.clips = (t.clips || []).map((c) => {
         const s = Library.byName(c.sampleName);
         if (!s) return null;

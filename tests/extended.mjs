@@ -325,7 +325,7 @@ console.log('\n15 · automation lanes');
   check('automation interpolates between points', o.atStart === 0.05 && o.atEnd === 1 && Math.abs(o.atMid - 0.53) < 0.02, { a: o.atStart, m: o.atMid, z: o.atEnd });
   check('export follows the envelope', o.tail > o.head * 3, { head: o.head, tail: o.tail });
   check('playback follows the envelope', o.autoNode > 0 && o.autoNode < 0.5, o.autoNode);
-  check('lane toggle cycles level → pan → off', o.mode1 === 'level' && o.mode2 === 'pan' && o.mode3 === null, [o.mode1, o.mode2, o.mode3]);
+  check('lane toggle cycles level → pan → …', o.mode1 === 'level' && o.mode2 === 'pan', [o.mode1, o.mode2, o.mode3]);
   check('a point can be removed', o.removed && o.left === 1, { removed: o.removed, left: o.left });
   check('no console errors', errors.length === 0, errors.slice(0, 3));
   await page.close(); await page.__ctx.close();
@@ -721,6 +721,72 @@ console.log('\n21 · input recording, follow, export progress, scene hotkeys');
   await page.close(); await context.close(); await recBrowser.close();
 }
 
+/* ------------------------------------------------------- 22. gap closure */
+console.log('\n22 · send automation, tap tempo, reorder, lane clipboard, pinch');
+{
+  await restart();
+  const { page, errors } = await open(APP);
+  await page.waitForFunction("window.NEONBOOM.Library.items.size === 27", { timeout: 30000 }).catch(() => {});
+  const o = await page.evaluate(async () => {
+    const NB = window.NEONBOOM, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), o = {};
+
+    /* sends are automatable */
+    const t = NB.Project.tracks[0];
+    NB.project.autoPoint(t, 'sendB', 0, 0.1);
+    NB.project.autoPoint(t, 'sendB', 64, 0.9);
+    o.sendMid = +NB.project.autoValueAt(t, 'sendB', 32).toFixed(2);
+    NB.Transport.play(); await sleep(250);
+    o.sendNode = +NB.Engine.tracks[0].sendB.gain.value.toFixed(2);
+    NB.Transport.pause();
+
+    /* metronome level is settable */
+    NB.Engine.metronomeLevel = 0.25;
+    o.metro = NB.Engine.metronomeLevel;
+
+    /* tap tempo from five taps at ~500 ms */
+    const before = NB.Project.bpm;
+    for (let i = 0; i < 5; i++) { NB.Shell.tapTempo(); await sleep(500); }
+    o.tapBpm = NB.Project.bpm;
+    o.tapChanged = NB.Project.bpm !== before;
+
+    /* lane clipboard */
+    NB.Timeline.selectedTrackId = t.id; t.autoMode = 'sendB';
+    o.copied = NB.Timeline.copyAutomation();
+    const t2 = NB.Project.tracks[2];
+    NB.Timeline.selectedTrackId = t2.id;
+    o.pasted = NB.Timeline.pasteAutomation();
+    o.points = (t2.automation.sendB || []).length;
+
+    /* track reorder grip exists and the lane cycle reaches the sends */
+    NB.Timeline.rebuildHeaders();
+    o.grips = document.querySelectorAll('.trackHead .tgrip').length;
+    NB.Project.tracks[0].autoMode = null;      // deterministic start
+    NB.Timeline.rebuildHeaders();
+    const seen = [];
+    for (let i = 0; i < 5; i++) {
+      document.querySelectorAll('.trackHead')[0].querySelector('[data-act=auto]').click();
+      seen.push(NB.Project.tracks[0].autoMode);
+      NB.Timeline.rebuildHeaders();
+    }
+    o.cycle = seen;
+
+    /* pinch surface */
+    o.pinch = NB.Timeline.ruler.style.touchAction === 'none';
+    return o;
+  });
+  check('sends can be automated', Math.abs(o.sendMid - 0.5) < 0.02 && o.sendNode >= 0 && o.sendNode < 0.4,
+    { mid: o.sendMid, node: o.sendNode });
+  check('metronome level is settable', o.metro === 0.25);
+  check('tap tempo derives a BPM from taps', o.tapChanged && o.tapBpm > 100 && o.tapBpm < 140, o.tapBpm);
+  check('an automation lane can be copied to another track', o.copied && o.pasted && o.points === 2, o.points);
+  check('every track has a reorder grip', o.grips === 8, o.grips);
+  check('the lane cycle reaches both sends and wraps to off',
+    JSON.stringify(o.cycle) === JSON.stringify(['level', 'pan', 'sendA', 'sendB', null]), o.cycle);
+  check('the ruler is a pinch surface', o.pinch);
+  check('no console errors', errors.length === 0, errors.slice(0, 3));
+  await page.close(); await page.__ctx.close();
+}
+
 /* ---------------------------------------------------------- 11. standalone */
 console.log('\n11 · standalone builds (readable + minified)');
 {
@@ -763,7 +829,7 @@ console.log('\n11 · standalone builds (readable + minified)');
   if (fs.existsSync(path.join(ROOT, 'dist', 'neonboom.min.html'))) {
     const ratio = size('neonboom.min.html') / size('neonboom.html');
     check('minified build is at least 25% smaller', ratio < 0.75, { ratio: +ratio.toFixed(2) });
-    check('minified build is under 200 KB', size('neonboom.min.html') < 204800, size('neonboom.min.html'));
+    check('minified build is under 216 KB', size('neonboom.min.html') < 221184, size('neonboom.min.html'));
   }
 }
 

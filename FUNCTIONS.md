@@ -38,7 +38,7 @@ Legend: ✅ implemented and tested · 🔎 implemented, verified manually · ⚠
 | `ensureTrackBuses(n)` | Grows or shrinks the bus array when tracks are added/removed | ✅ |
 | `setTrackVolume(i,v)` / `setTrackPan(i,p)` | Ramped parameter writes | ✅ |
 | `setTrackSends(i,a,b)` | Post-fader delay / reverb send amounts | ✅ |
-| `autoValueAt(track, kind, six)` / `autoPoint` / `autoRemove` | Breakpoint envelopes for level and pan | ✅ |
+| `autoValueAt(track, kind, six)` / `autoPoint` / `autoRemove` | Breakpoint envelopes for level, pan, sendA, sendB | ✅ |
 | `AudioWorklet.prepare(ctx)` | Registers the crusher module (data: URL) per context | ✅ |
 | `applyMix(tracks)` | Resolves mute/solo into real gains so it silences audio that is already playing | ✅ |
 | `readMasterVU(bands)` / `readTrackLevel(i)` | Analyser reads with reusable buffers (no per-frame allocation) | ✅ |
@@ -166,6 +166,9 @@ Voices: `kickHit`, `snareHit`, `clapHit`, `hatHit`, `crashHit`, `bass808`, `stab
 | `select(id, additive)` / `selectionIds()` | Multi-selection set used by every bulk action | ✅ |
 | `selectInRect(x0,y0,x1,y1)` | Marquee selection | ✅ |
 | `_drawAutomation` / `_startAutoEdit` | Automation lane drawing and point editing | ✅ |
+| `copyAutomation` / `pasteAutomation` | Envelope clipboard between tracks | ✅ |
+| `_startReorder` | Drag a track grip to move the track | ✅ |
+| `_wirePinch` | Two-finger zoom on the ruler | ✅ |
 | `scrollToPlayhead()` | Follows the playhead while rolling | 🔎 |
 
 ## 6. Pads — `src/ui/pads.js`

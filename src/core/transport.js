@@ -247,6 +247,21 @@
             bus.panner.pan.linearRampToValueAtTime(panTo == null ? panFrom : panTo, horizonCtx);
           }
         }
+
+        /* send automation */
+        ['sendA', 'sendB'].forEach((kind) => {
+          const node = bus[kind] && bus[kind].gain;
+          if (!node) return;
+          const from = NB.project.autoValueAt(track, kind, fromSix);
+          const to = NB.project.autoValueAt(track, kind, toSix);
+          if (from == null) {
+            if (node._autoActive) { node.cancelScheduledValues(fromCtx); node._autoActive = false; }
+          } else {
+            node._autoActive = true;
+            node.setValueAtTime(Math.max(0, from), fromCtx);
+            node.linearRampToValueAtTime(Math.max(0, to == null ? from : to), horizonCtx);
+          }
+        });
       });
     },
 

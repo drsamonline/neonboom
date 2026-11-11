@@ -271,11 +271,23 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       }
     }
 
+    /* ramp one send from automation; `kind` is 'sendA' (delay) or 'sendB' (reverb) */
+    setSendAutomation(i, kind, value, atTime, until) {
+      const b = this.tracks[i];
+      if (!b || !b[kind]) return;
+      const p = b[kind].gain;
+      const t = atTime == null ? this.ctx.currentTime : atTime;
+      p.cancelScheduledValues(t);
+      p.setValueAtTime(Math.max(0, value), t);
+      if (until != null) p.linearRampToValueAtTime(Math.max(0, value), until);
+    }
+
     setTrackSends(i, a, b2) {
       const b = this.tracks[i]; if (!b) return;
       if (b.sendA) b.sendA.gain.setTargetAtTime(clamp(a || 0, 0, 1), this.ctx.currentTime, 0.01);
       if (b.sendB) b.sendB.gain.setTargetAtTime(clamp(b2 || 0, 0, 1), this.ctx.currentTime, 0.01);
     }
+
     /* Mute/solo is applied as a real gain change, so it is audible instantly
        on already-playing sources — not just the next scheduling pass. */
     applyMix(tracks) {
@@ -337,12 +349,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
 
     /* metronome click scheduled on the audio clock */
     click(when, accent) {
+      const level = this.metronomeLevel == null ? 0.6 : this.metronomeLevel;
       const ctx = this.ctx;
       const osc = ctx.createOscillator(); osc.type = 'square';
       const g = ctx.createGain();
       osc.frequency.value = accent ? 1760 : 1180;
       g.gain.setValueAtTime(0.0001, when);
-      g.gain.exponentialRampToValueAtTime(accent ? 0.28 : 0.16, when + 0.002);
+      g.gain.exponentialRampToValueAtTime((accent ? 0.28 : 0.16) * level, when + 0.002);
       g.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 600;
       osc.connect(hp); hp.connect(g); g.connect(this.master.input);

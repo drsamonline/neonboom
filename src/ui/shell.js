@@ -171,6 +171,12 @@
           <input type="number" id="tsBpm" value="${P.bpm}" min="40" max="220" style="width:74px;text-align:center">
           <button class="btn" id="tsUp" style="min-width:44px">+</button>
           <span style="font-size:11px;color:var(--ink-2)">BPM</span></div>
+        <div class="sheetRow"><label>Tempo</label>
+          <button class="btn" id="tsTap">Tap</button>
+          <span style="font-size:11px;color:var(--ink-2);flex:1">tap four times</span></div>
+        <div class="sheetRow"><label>Click level</label>
+          <input type="range" id="tsMetro" min="0" max="1" step="0.05" value="${NB.Engine.metronomeLevel == null ? 0.6 : NB.Engine.metronomeLevel}">
+          <span class="val" id="tsMetroVal">${Math.round((NB.Engine.metronomeLevel == null ? 0.6 : NB.Engine.metronomeLevel) * 100)}%</span></div>
         <div class="sheetRow"><label>Snap</label>
           <select id="tsSnap" style="flex:1">
             <option value="4"${P.snap === 4 ? ' selected' : ''}>1/4 bar</option>
@@ -389,6 +395,12 @@
       this.sheet(`
         <h4>Project</h4>
         <div class="sheetRow"><label>Name</label><input type="text" id="shName" value="${escapeAttr(P.name)}" style="flex:1"></div>
+        <div class="sheetRow"><label>Tempo</label>
+          <button class="btn" id="tsTap">Tap</button>
+          <span style="font-size:11px;color:var(--ink-2);flex:1">tap four times</span></div>
+        <div class="sheetRow"><label>Click level</label>
+          <input type="range" id="tsMetro" min="0" max="1" step="0.05" value="${NB.Engine.metronomeLevel == null ? 0.6 : NB.Engine.metronomeLevel}">
+          <span class="val" id="tsMetroVal">${Math.round((NB.Engine.metronomeLevel == null ? 0.6 : NB.Engine.metronomeLevel) * 100)}%</span></div>
         <div class="sheetRow"><label>Snap</label>
           <select id="shSnap" style="flex:1">
             <option value="4"${P.snap === 4 ? ' selected' : ''}>1/4 bar</option>
@@ -418,6 +430,14 @@
         $('#shSwingVal', s).textContent = Math.round(P.swing * 100) + '%';
       });
       $('#shSwing', s).addEventListener('change', () => { NB.Transport.reanchor(); NB.Persistence.saveSoon(); });
+      $('#tsTap', s).addEventListener('click', () => {
+        const bpm = this.tapTempo();
+        if (bpm) { $('#tsBpm', s).value = bpm; toast(`${bpm} BPM`, 'ok', 1200); }
+      });
+      $('#tsMetro', s).addEventListener('input', (e) => {
+        NB.Engine.metronomeLevel = parseFloat(e.target.value);
+        $('#tsMetroVal', s).textContent = Math.round(NB.Engine.metronomeLevel * 100) + '%';
+      });
       $('#shMetro', s).addEventListener('change', (e) => { P.metronome = e.target.checked; $('#btnMetro').classList.toggle('on', P.metronome); });
       $('#shDemo', s).addEventListener('click', () => { this.closeSheet(); this.openTemplates(); });
       $('#shScenes', s).addEventListener('click', () => { this.closeSheet(); this.openScenes(); });
@@ -700,6 +720,26 @@
         toast(`CC ${b.cc} → ${b.target}`, 'ok', 2200);
         this.announce(`Bound controller ${b.cc} to ${b.target}`);
       });
+    },
+
+    /* ---------- tap tempo ------------------------------------------------ */
+    tapTempo() {
+      const now = performance.now();
+      if (!this._taps) this._taps = [];
+      if (this._taps.length && now - this._taps[this._taps.length - 1] > 2200) this._taps = [];
+      this._taps.push(now);
+      if (this._taps.length > 6) this._taps.shift();
+      if (this._taps.length < 2) { toast('Tap again…', '', 900); return null; }
+
+      const gaps = [];
+      for (let i = 1; i < this._taps.length; i++) gaps.push(this._taps[i] - this._taps[i - 1]);
+      const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      const bpm = clamp(Math.round(60000 / avg), 40, 220);
+      NB.Transport.setBpm(bpm);
+      this.bpmInput.value = bpm;
+      this.syncLcdSub();
+      NB.Persistence.saveSoon();
+      return bpm;
     },
 
     /* ---------- busy overlay (export can take 20 s) ------------------------ */
@@ -1159,6 +1199,9 @@
         if (mod && e.code === 'KeyC') { e.preventDefault(); NB.Timeline.copySelected(); return; }
         if (mod && e.code === 'KeyX') { e.preventDefault(); NB.Timeline.cutSelected(); return; }
         if (mod && e.code === 'KeyV') { e.preventDefault(); NB.Timeline.paste(); return; }
+        if (!mod && !e.shiftKey && e.code === 'KeyT') { e.preventDefault(); const b = this.tapTempo(); if (b) toast(`${b} BPM`, 'ok', 1000); return; }
+        if (mod && e.shiftKey && e.code === 'KeyC') { e.preventDefault(); NB.Timeline.copyAutomation(); return; }
+        if (mod && e.shiftKey && e.code === 'KeyV') { e.preventDefault(); NB.Timeline.pasteAutomation(); return; }
         /* shift+1..8 launches a scene — 1..0/QW are pad auditions */
         if (e.shiftKey && !mod && /^Digit[1-8]$/.test(e.code)) {
           const list = NB.Scenes.list();

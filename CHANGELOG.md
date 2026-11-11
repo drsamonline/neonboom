@@ -5,6 +5,28 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.6.0] — 2026-11-11
+
+The last six gaps on the list, all closed.
+
+### Added
+- **Send automation**: the lane now cycles *level → pan → delay send → reverb send → off*, so a
+  dub-style send throw is drawable, played and exported like any other envelope.
+- **Tap tempo**: <kbd>T</kbd> or the *Tap* button in the transport sheet; averages up to six taps and
+  resets after a 2.2 s pause.
+- **Metronome level**: a slider in the transport sheet (the click had a fixed gain).
+- **Track reorder**: drag the ⠿ grip in a track header; clips move with the track and the move is one
+  undo step.
+- **Automation lane clipboard**: <kbd>Ctrl</kbd><kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>V</kbd> copies an
+  envelope to another track.
+- **Pinch-zoom on touch**: two fingers on the ruler zoom around the point between them. The ruler has
+  no scroll gesture, so this cannot fight panning.
+
+### Fixed
+- The clip inspector's lane tooltip and the automation legend now name all four kinds.
+- Size budget raised to 216 KB for the minified build — recording, send automation and the lane
+  clipboard added ~6 KB.
+
 ## [2.5.0] — 2026-11-11
 
 Input recording, and the three workflow gaps dogfooding turned up.

@@ -11,12 +11,12 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.5.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.6.0-ffb020)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/status-complete-41d18a)](#status)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
-[![Tests](https://img.shields.io/badge/headless_tests-220_assertions_passing-41d18a)](#testing)
+[![Tests](https://img.shields.io/badge/headless_tests-228_assertions_passing-41d18a)](#testing)
 [![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
 [![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
@@ -44,7 +44,7 @@ Most browser music toys are a page of buttons wired to an audio tag. NEONBOOM is
 | 🎚 **Tempo-fit** | A loop can be WSOLA time-stretched to the project tempo instead of tape-speeding, so a 90 BPM loop sits at 92 BPM **without changing pitch**. Per clip, cached, exported |
 | 🎬 **Scenes** | Save the whole arrangement as a named snapshot — tracks, clips, mixer, automation, loop, tempo — then switch between sections live. A launch while rolling waits for the **next bar** |
 | 🧰 **Templates** | Boom Bap, Trap, House or an empty grid — built from the same loops, with mixer levels and sends already set. |
-| 📈 **Automation** | Per-track level and pan envelopes. Press **A** on a track, click to add points, drag to move, alt-click to remove. Played and exported |
+| 📈 **Automation** | Per-track **level, pan and both sends** envelopes. Press **A** on a track, click to add points, drag to move, alt-click to remove. Played and exported |
 | ✂️ **Clip editor** | Drag the trim handles on the full waveform, normalise, fit to 1 or 2 bars, halve, reset. Non-destructive — undo covers all of it. |
 | 🖱 **Multi-select** | Shift-click or drag a marquee, then move, nudge, quantise, duplicate or delete the whole selection at once. |
 | ♿ **Accessible** | Colour-blind-safe palette, larger-text mode, 40 px+ targets, reduced-motion aware, a single tab stop per grid with arrow-key navigation, and transport/clip changes announced to screen readers. |
@@ -123,6 +123,7 @@ Opening `index.html` straight from disk also works — the app is plain classic 
 | Delete clip | <kbd>Del</kbd> | Save project file | <kbd>Ctrl</kbd> <kbd>S</kbd> |
 | Copy / cut / paste clip | <kbd>Ctrl</kbd> <kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> | History panel | drawer → *History* |
 | Launch scene 1–8 | <kbd>Shift</kbd> + <kbd>1</kbd>…<kbd>8</kbd> | Follow playhead | *Follow* in the arrange bar |
+| Tap tempo | <kbd>T</kbd> | Copy/paste an automation lane | <kbd>Ctrl</kbd><kbd>Shift</kbd> + <kbd>C</kbd> / <kbd>V</kbd> |
 | Add to selection | <kbd>Shift</kbd> + click | Marquee select | drag over empty lane |
 | Mute track | <kbd>M</kbd> | Audition pads | <kbd>1</kbd>…<kbd>0</kbd> <kbd>Q</kbd> <kbd>W</kbd> |
 
@@ -187,7 +188,7 @@ npm run build               # → dist/neonboom.html and dist/neonboom.min.html
 The repo is checked with a headless Chromium harness that boots the app and exercises the public surface — transport, clip edits, undo/redo, zoom extremes, pads, recording, mixer, FX, offline render, autosave restore, touch gestures and layout at three viewport sizes.
 
 ```bash
-npm test                       # 189 assertions: core (75) + features (114)
+npm test                       # 197 assertions: core (75) + features (122)
 npm run test:offline           # 13 assertions: installability audit + the app booting with the network off
 npm run test:pack              # 18 assertions: pack present / missing / corrupt, zip reader, manual install
 npm run test:layout            # geometry regression across three viewports (--update to rebaseline)
@@ -195,7 +196,7 @@ npm run build:pack             # re-renders pack/neonboom-pack-v1.zip from the s
 npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **220 assertions across five harnesses (75 core · 114 features · 18 pack · 13 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
+Latest run: **228 assertions across five harnesses (75 core · 122 features · 18 pack · 13 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
 
 ---
 

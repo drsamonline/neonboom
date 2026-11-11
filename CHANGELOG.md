@@ -5,6 +5,25 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.4.1] — 2026-11-11
+
+Bug fixes only — found by dogfooding the app end to end (`DOGFOOD.md`).
+
+### Fixed
+- **A scene could play silence after a reload.** `Persistence.load()` remapped clip sample ids for
+  the live tracks but not for `Project.scenes`, which holds its own copy of them. A scene captured
+  after importing a sample kept the pre-reload id, so launching it after a restart gave a track of
+  clips pointing at a sample the library no longer had — silence, and no error to say so. Scenes now
+  go through the same remap and clip normalisation. Regression test added.
+- **The clip inspector's sliders had no accessible names.** Four `<label>`s were never associated
+  with their inputs; each now carries an `aria-label`.
+
+### Added
+- `DOGFOOD.md` — the session, what it exercised, what it found, and the two things only a person
+  can judge (how the time-stretch sounds, whether the demo lands).
+- `tests/dogfood.mjs` — drives a full session through the real UI: template, import, place, tempo-fit,
+  pitch, automation by mouse, scenes, stems, bounce, reload, relaunch.
+
 ## [2.4.0] — 2026-11-11 · **final planned release**
 
 NEONBOOM is feature-frozen here. Code signing, a signed release APK, i18n and a generated docs site

@@ -76,7 +76,7 @@
       const gainCard = el('div', { class: 'insp-card' });
       gainCard.innerHTML = `<h4>Clip gain</h4>
         <div class="knobRow"><label>Gain</label>
-          <input type="range" min="0" max="1.5" step="0.01" value="${clip.gain == null ? 1 : clip.gain}">
+          <input type="range" aria-label="Clip gain" min="0" max="1.5" step="0.01" value="${clip.gain == null ? 1 : clip.gain}">
           <span class="val">${Math.round((clip.gain == null ? 1 : clip.gain) * 100)}%</span></div>`;
       const gIn = gainCard.querySelector('input');
       const gOut = gainCard.querySelector('.val');
@@ -92,13 +92,13 @@
       const pitch = clip.pitch || 0;
       sound.innerHTML = `<h4>Sound</h4>
         <div class="knobRow"><label>Pitch</label>
-          <input type="range" min="-12" max="12" step="1" value="${pitch}" data-k="pitch">
+          <input type="range" aria-label="Clip pitch in semitones" min="-12" max="12" step="1" value="${pitch}" data-k="pitch">
           <span class="val">${pitch > 0 ? '+' : ''}${pitch} st</span></div>
         <div class="knobRow"><label>Fade in</label>
-          <input type="range" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeIn || 0}" data-k="fadeIn">
+          <input type="range" aria-label="Fade in" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeIn || 0}" data-k="fadeIn">
           <span class="val">${clip.fadeIn || 0}/16</span></div>
         <div class="knobRow"><label>Fade out</label>
-          <input type="range" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeOut || 0}" data-k="fadeOut">
+          <input type="range" aria-label="Fade out" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeOut || 0}" data-k="fadeOut">
           <span class="val">${clip.fadeOut || 0}/16</span></div>
         <div class="grid2" style="margin-top:4px">
           <button class="btn ${clip.reverse ? 'on' : ''}" id="clipReverse">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>

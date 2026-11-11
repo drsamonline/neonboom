@@ -360,7 +360,17 @@
       Project.loopEnabled = !!proj.loopEnabled;
       Project.metronome = !!proj.metronome;
       Project.swing = proj.swing || 0;
-      Project.scenes = Array.isArray(proj.scenes) ? proj.scenes : [];
+      /* Scenes hold their own copies of tracks, so they need the same sample-id
+         remap and clip normalisation the live tracks get — otherwise a scene
+         captured with an imported sample points at an id that no longer exists
+         after the reload, and launching it plays silence. */
+      const remapClips = (clips) => (clips || [])
+        .map((c) => normaliseClip({ ...c, sampleId: idMap[c.sampleId] || c.sampleId }))
+        .filter((c) => Library.items.has(c.sampleId));
+      Project.scenes = (Array.isArray(proj.scenes) ? proj.scenes : []).map((sc) => ({
+        ...sc,
+        tracks: (sc.tracks || []).map((t) => ({ ...t, clips: remapClips(t.clips) })),
+      }));
       Project.fx = proj.fx || null;
       Project.tracks = proj.tracks.map((t) => ({
         ...t,

@@ -2605,7 +2605,17 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       Project.loopEnabled = !!proj.loopEnabled;
       Project.metronome = !!proj.metronome;
       Project.swing = proj.swing || 0;
-      Project.scenes = Array.isArray(proj.scenes) ? proj.scenes : [];
+      /* Scenes hold their own copies of tracks, so they need the same sample-id
+         remap and clip normalisation the live tracks get — otherwise a scene
+         captured with an imported sample points at an id that no longer exists
+         after the reload, and launching it plays silence. */
+      const remapClips = (clips) => (clips || [])
+        .map((c) => normaliseClip({ ...c, sampleId: idMap[c.sampleId] || c.sampleId }))
+        .filter((c) => Library.items.has(c.sampleId));
+      Project.scenes = (Array.isArray(proj.scenes) ? proj.scenes : []).map((sc) => ({
+        ...sc,
+        tracks: (sc.tracks || []).map((t) => ({ ...t, clips: remapClips(t.clips) })),
+      }));
       Project.fx = proj.fx || null;
       Project.tracks = proj.tracks.map((t) => ({
         ...t,
@@ -5412,7 +5422,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       const gainCard = el('div', { class: 'insp-card' });
       gainCard.innerHTML = `<h4>Clip gain</h4>
         <div class="knobRow"><label>Gain</label>
-          <input type="range" min="0" max="1.5" step="0.01" value="${clip.gain == null ? 1 : clip.gain}">
+          <input type="range" aria-label="Clip gain" min="0" max="1.5" step="0.01" value="${clip.gain == null ? 1 : clip.gain}">
           <span class="val">${Math.round((clip.gain == null ? 1 : clip.gain) * 100)}%</span></div>`;
       const gIn = gainCard.querySelector('input');
       const gOut = gainCard.querySelector('.val');
@@ -5428,13 +5438,13 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
       const pitch = clip.pitch || 0;
       sound.innerHTML = `<h4>Sound</h4>
         <div class="knobRow"><label>Pitch</label>
-          <input type="range" min="-12" max="12" step="1" value="${pitch}" data-k="pitch">
+          <input type="range" aria-label="Clip pitch in semitones" min="-12" max="12" step="1" value="${pitch}" data-k="pitch">
           <span class="val">${pitch > 0 ? '+' : ''}${pitch} st</span></div>
         <div class="knobRow"><label>Fade in</label>
-          <input type="range" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeIn || 0}" data-k="fadeIn">
+          <input type="range" aria-label="Fade in" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeIn || 0}" data-k="fadeIn">
           <span class="val">${clip.fadeIn || 0}/16</span></div>
         <div class="knobRow"><label>Fade out</label>
-          <input type="range" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeOut || 0}" data-k="fadeOut">
+          <input type="range" aria-label="Fade out" min="0" max="${Math.floor(len / 2)}" step="1" value="${clip.fadeOut || 0}" data-k="fadeOut">
           <span class="val">${clip.fadeOut || 0}/16</span></div>
         <div class="grid2" style="margin-top:4px">
           <button class="btn ${clip.reverse ? 'on' : ''}" id="clipReverse">${clip.reverse ? '⏪ Reversed' : '⏩ Reverse'}</button>
@@ -6841,7 +6851,7 @@ registerProcessor('nb-bitcrusher', NB_Bitcrusher);
   ];
 
   const App = {
-    version: '2.4.0',
+    version: '2.4.1',
 
     async boot() {
       const bar = $('#bootBar'), msg = $('#bootMsg');

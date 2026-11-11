@@ -11,12 +11,12 @@ Twenty-seven loops are synthesised on your device at boot — nothing to downloa
 [![Download](https://img.shields.io/badge/⤓_download-single_file_HTML-1b212a?style=for-the-badge)](https://github.com/drsamonline/neonboom/releases/latest)
 
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-41d18a)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.4.0-ffb020)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.4.1-ffb020)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/status-complete-41d18a)](#status)
 [![PWA](https://img.shields.io/badge/PWA-offline_ready-5b8def)](manifest.webmanifest)
 [![No dependencies](https://img.shields.io/badge/dependencies-0-e85d9c)](#architecture)
 [![Single file](https://img.shields.io/badge/standalone-190_KB-b4e61d)](dist/neonboom.html)
-[![Tests](https://img.shields.io/badge/headless_tests-194_assertions_passing-41d18a)](#testing)
+[![Tests](https://img.shields.io/badge/headless_tests-211_assertions_passing-41d18a)](#testing)
 [![Test](https://github.com/drsamonline/neonboom/actions/workflows/test.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/test.yml)
 [![Deploy](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml/badge.svg)](https://github.com/drsamonline/neonboom/actions/workflows/pages.yml)
 [![Stars](https://img.shields.io/github/stars/drsamonline/neonboom?style=flat)](https://github.com/drsamonline/neonboom/stargazers)
@@ -185,7 +185,7 @@ npm run build               # → dist/neonboom.html and dist/neonboom.min.html
 The repo is checked with a headless Chromium harness that boots the app and exercises the public surface — transport, clip edits, undo/redo, zoom extremes, pads, recording, mixer, FX, offline render, autosave restore, touch gestures and layout at three viewport sizes.
 
 ```bash
-npm test                       # 179 assertions: core (75) + features (104)
+npm test                       # 180 assertions: core (75) + features (105)
 npm run test:offline           # 13 assertions: installability audit + the app booting with the network off
 npm run test:pack              # 18 assertions: pack present / missing / corrupt, zip reader, manual install
 npm run test:layout            # geometry regression across three viewports (--update to rebaseline)
@@ -193,7 +193,7 @@ npm run build:pack             # re-renders pack/neonboom-pack-v1.zip from the s
 npm run screenshots            # regenerates docs/img/*
 ```
 
-Latest run: **210 assertions across five harnesses (75 core · 104 features · 18 pack · 13 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
+Latest run: **211 assertions across five harnesses (75 core · 105 features · 18 pack · 13 offline), 0 console errors**, timeline repaint 2.6 ms/frame, overlay 0.01 ms/frame, boot ≈ 3.7 s cold / ≈ 1.6 s warm (loop cache).
 
 ---
 

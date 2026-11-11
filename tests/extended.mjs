@@ -566,6 +566,38 @@ console.log('\n19 · scene launcher');
   check('a launch is one undo step', o.undoChanged);
   check('scenes rename and delete', o.renamed === 'Break' && o.removed);
   check('scenes live on the project', o.persisted);
+
+  /* regression: scenes hold their own copy of the tracks, so they need the same
+     sample-id remap the live tracks get on load */
+  await page.evaluate(async () => {
+    const NB = window.NEONBOOM;
+    const ctx = NB.Engine.ctx;
+    const buf = ctx.createBuffer(1, 4096, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.sin(i / 8) * 0.3;
+    const sample = NB.Library.register({ name: 'dogfood', buffer: buf, category: 'Imported', color: '#888', isUser: true });
+    NB.Project.tracks[2].clips.push(NB.project.newClip(sample.id, NB.Project.tracks[2].id, 8));
+    NB.Scenes.capture('With import');
+    await NB.Persistence.save();
+  });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction("window.NEONBOOM && document.querySelector('#boot').classList.contains('done')", { timeout: 120000 });
+  await page.waitForFunction("window.NEONBOOM.Library.items.size >= 27", { timeout: 40000 }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 700));
+  const after = await page.evaluate(async () => {
+    const NB = window.NEONBOOM;
+    const scenes = NB.Scenes.list();
+    const scene = scenes[scenes.length - 1];
+    if (!scene) return { noScene: true };
+    NB.Scenes.launch(scene.id);
+    await new Promise((r) => setTimeout(r, 250));
+    const ids = new Set();
+    NB.Project.tracks.forEach((t) => t.clips.forEach((c) => ids.add(c.sampleId)));
+    return { missing: [...ids].filter((id) => !NB.Library.get(id)).length, clips: NB.Project.tracks.reduce((n, t) => n + t.clips.length, 0) };
+  });
+  check('a scene keeps its samples across a reload', !after.noScene && after.missing === 0,
+    { missing: after.missing, clips: after.clips });
+
   check('no console errors', errors.length === 0, errors.slice(0, 3));
   await page.close(); await page.__ctx.close();
 }
